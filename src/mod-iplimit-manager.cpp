@@ -84,7 +84,7 @@ public:
         std::string ip = args;
         QueryResult result = WorldDatabase.PQuery("REPLACE INTO custom_allowed_ips (ip) VALUES ('%s')", ip.c_str());
         allowedIps.insert(ip);
-        handler->SendSysMessage("허용 IP 목록에 추가되었습니다.");
+        handler->SendSysMessage("Added to allowed IP list.");
         return true;
     }
 
@@ -96,7 +96,7 @@ public:
         std::string ip = args;
         WorldDatabase.PExecute("DELETE FROM custom_allowed_ips WHERE ip = '%s'", ip.c_str());
         allowedIps.erase(ip);
-        handler->SendSysMessage("허용 IP 목록에서 제거되었습니다.");
+        handler->SendSysMessage("Removed from the allowed IP list.");
         return true;
     }
 };
