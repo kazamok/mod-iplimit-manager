@@ -1,9 +1,0 @@
-#
-# 모듈 설정 - mod-iplimit-manager
-#
-
-# 모듈 사용 여부 (0 = 비활성화, 1 = 활성화)
-EnableIpLimitManager = 1
-
-# 중복 접속 시 사용자에게 보여줄 메시지
-IpLimitKickMessage = "동일한 IP에서 다중 접속이 제한되어 있습니다."
