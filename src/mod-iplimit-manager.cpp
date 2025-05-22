@@ -1,8 +1,8 @@
 // Filename mod-iplimit-manager.cpp
-// IP 연결 제한 관리자 모듈
-// 이 모듈은 동일한 IP에서 여러 클라이언트 연결을 제한합니다.
-// 기본적으로 한 IP당 하나의 연결만 허용합니다.
-// 예외 IP는 명령어로 추가하거나 제거할 수 있습니다.
+// IP Connection Limit Manager Module
+// This module limits multiple client connections from the same IP.
+// By default, only one connection per IP is allowed.
+// Exception IPs can be added or removed by command.
 
 #include "Player.h"
 #include "World.h"
@@ -24,7 +24,7 @@ class IpLimitManager_PlayerScript : public PlayerScript
 public:
     IpLimitManager_PlayerScript() : PlayerScript("IpLimitManager_PlayerScript") {}
 
-    void OnLogin(Player* player) // 플레이어 로그인 시 IP 제한 확인
+    void OnLogin(Player* player) // Check IP restrictions when player logs in
     {
         if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
             return;
@@ -45,7 +45,7 @@ public:
         }
     }
 
-    void OnLogout(Player* player) // 플레이어 로그아웃 시 IP 연결 수 감소
+    void OnLogout(Player* player) // Reduce IP connection count when player logs out
     {
         std::string ip = player->GetSession()->GetRemoteAddress();
 
@@ -84,7 +84,7 @@ public:
         return commandTable;
     }
 
-    static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args) // IP 추가 명령어 처리
+    static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args) // IP Additional command processing
     {
         if (args.empty())
             return false;
@@ -96,7 +96,7 @@ public:
         return true;
     }
 
-    static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args) // IP 제거 명령어 처리
+    static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args) // IP Remove command processing
     {
         if (args.empty())
             return false;
@@ -109,7 +109,7 @@ public:
     }
 };
 
-void LoadAllowedIpsFromDB() // DB에서 허용된 IP 목록 로드
+void LoadAllowedIpsFromDB() // Load allowed IP list from DB
 {
     QueryResult result = WorldDatabase.Query("SELECT ip FROM custom_allowed_ips");
     if (!result)
@@ -122,7 +122,7 @@ void LoadAllowedIpsFromDB() // DB에서 허용된 IP 목록 로드
     } while (result->NextRow());
 }
 
-void Addmod_iplimit_managerScripts() // 모듈 스크립트 등록
+void Addmod_iplimit_managerScripts() // Register module script
 {
     LoadAllowedIpsFromDB();
     new IpLimitManager_PlayerScript();
