@@ -15,9 +15,9 @@
 - 설정 파일에서 모듈을 활성화하고 메시지를 설정할 수 있습니다.
 
 ## 명령어
-- `.allowip add <ip>` : 허용된 IP 목록에 추가
+- `.allowip add <ip>` : 허용 IP 목록에 추가
 
-- `.allowip del <ip>` : 허용된 IP 목록에서 제거
+- `.allowip del <ip>` : 허용 IP 목록에서 제거
 
 ## 설치 가이드
 - 모듈을 `modules` 폴더에 복사합니다.
