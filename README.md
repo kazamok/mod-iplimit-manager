@@ -2,11 +2,9 @@
 
 ## IPLIMIT MANAGER
 
-- 최종 빌드: [![Build Status](https://github.com/kazamok/mod-iplimit-manager/workflows/core-build/badge.svg)] (https://github.com/kazamok/mod-iplimit-manager)
-
 ## 중요 사항
 
-- 최소한 AzerothCore 커밋 [9adba48]을 사용해야 합니다.
+- 최소한 AzerothCore 커밋 [9adba48](https://github.com/azerothcore/azerothcore-wotlk/commit/9adba482c236f1087d66a672e97a99f763ba74b3) 을 사용해야 합니다.
 
 ## 기능
 
