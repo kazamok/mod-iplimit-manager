@@ -1,3 +1,9 @@
+// Filename mod-iplimit-manager.cpp
+// IP 연결 제한 관리자 모듈
+// 이 모듈은 동일한 IP에서 여러 클라이언트 연결을 제한합니다.
+// 기본적으로 한 IP당 하나의 연결만 허용합니다.
+// 예외 IP는 명령어로 추가하거나 제거할 수 있습니다.
+
 #include "Player.h"
 #include "World.h"
 #include "ScriptMgr.h"
@@ -9,11 +15,6 @@
 #include <set>
 #include <mutex>
 
-// 한국어 주석: IP 연결 제한 관리자 모듈
-// 이 모듈은 동일한 IP에서 여러 클라이언트 연결을 제한합니다.
-// 기본적으로 한 IP당 하나의 연결만 허용합니다.
-// 예외 IP는 명령어로 추가하거나 제거할 수 있습니다.
-
 std::mutex ipMutex;
 std::unordered_map<std::string, uint32> ipConnectionCount;
 std::set<std::string> allowedIps;
@@ -23,8 +24,7 @@ class IpLimitManager_PlayerScript : public PlayerScript
 public:
     IpLimitManager_PlayerScript() : PlayerScript("IpLimitManager_PlayerScript") {}
 
-    // 한국어 주석: 플레이어 로그인 시 IP 제한 확인
-    void OnLogin(Player* player)
+    void OnLogin(Player* player) // 플레이어 로그인 시 IP 제한 확인
     {
         if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
             return;
@@ -45,8 +45,7 @@ public:
         }
     }
 
-    // 한국어 주석: 플레이어 로그아웃 시 IP 연결 수 감소
-    void OnLogout(Player* player)
+    void OnLogout(Player* player) // 플레이어 로그아웃 시 IP 연결 수 감소
     {
         std::string ip = player->GetSession()->GetRemoteAddress();
 
@@ -85,8 +84,7 @@ public:
         return commandTable;
     }
 
-    // 한국어 주석: IP 추가 명령어 처리
-    static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args)
+    static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args) // IP 추가 명령어 처리
     {
         if (args.empty())
             return false;
@@ -98,8 +96,7 @@ public:
         return true;
     }
 
-    // 한국어 주석: IP 제거 명령어 처리
-    static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args)
+    static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args) // IP 제거 명령어 처리
     {
         if (args.empty())
             return false;
@@ -112,8 +109,7 @@ public:
     }
 };
 
-// 한국어 주석: DB에서 허용된 IP 목록 로드
-void LoadAllowedIpsFromDB()
+void LoadAllowedIpsFromDB() // DB에서 허용된 IP 목록 로드
 {
     QueryResult result = WorldDatabase.Query("SELECT ip FROM custom_allowed_ips");
     if (!result)
@@ -126,8 +122,7 @@ void LoadAllowedIpsFromDB()
     } while (result->NextRow());
 }
 
-// 한국어 주석: 모듈 스크립트 등록
-void Addmod_iplimit_managerScripts()
+void Addmod_iplimit_managerScripts() // 모듈 스크립트 등록
 {
     LoadAllowedIpsFromDB();
     new IpLimitManager_PlayerScript();
