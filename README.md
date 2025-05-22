@@ -1,10 +1,6 @@
-# ![logo](https://raw.githubusercontent.com/azerothcore/azerothcore.github.io/master/images/logo-github.png) AzerothCore
-
 ## IPLimit Manager
 
 ## 중요 사항
-
-- 최소한 AzerothCore 커밋 [9adba48](https://github.com/azerothcore/azerothcore-wotlk/commit/9adba482c236f1087d66a672e97a99f763ba74b3) 을 사용해야 합니다.
 
 ## 기능
 
