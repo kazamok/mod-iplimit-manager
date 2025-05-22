@@ -1,4 +1,4 @@
--- 허용된 IP 주소를 저장하는 테이블 생성
+-- Create a table to store allowed IP addresses
 
 CREATE TABLE IF NOT EXISTS `acore_world.custom_allowed_ips` (
   `ip` varchar(45) NOT NULL,
