@@ -1,6 +1,6 @@
 # ![logo](https://raw.githubusercontent.com/azerothcore/azerothcore.github.io/master/images/logo-github.png) AzerothCore
 
-## IPLIMIT MANAGER
+## IPLimit Manager
 
 ## 중요 사항
 
