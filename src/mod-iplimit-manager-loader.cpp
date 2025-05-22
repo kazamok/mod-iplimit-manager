@@ -1,7 +1,7 @@
 // Filename mod-iplimit-manager-loader.cpp
-// 모듈 로더 클래스
-// 이 클래스는 모듈이 로드될 때 실행됩니다.
-// 설정에 따라 모듈을 활성화하거나 비활성화합니다.
+// Module loader class
+// This class runs when a module is loaded.
+// Enables or disables the module depending on its settings.
 
 #include "ScriptMgr.h"
 #include "Config.h"
@@ -28,7 +28,7 @@ public:
     }
 };
 
-void Addmod_iplimit_managerLoader() // 모듈 로드 시 실행되는 함수
+void Addmod_iplimit_managerLoader()// Function executed when module is loaded
 {
     new mod_iplimit_managerLoader();
 }
