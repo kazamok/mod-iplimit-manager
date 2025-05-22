@@ -9,6 +9,11 @@
 #include <set>
 #include <mutex>
 
+// 한국어 주석: IP 연결 제한 관리자 모듈
+// 이 모듈은 동일한 IP에서 여러 클라이언트 연결을 제한합니다.
+// 기본적으로 한 IP당 하나의 연결만 허용합니다.
+// 예외 IP는 명령어로 추가하거나 제거할 수 있습니다.
+
 std::mutex ipMutex;
 std::unordered_map<std::string, uint32> ipConnectionCount;
 std::set<std::string> allowedIps;
@@ -18,9 +23,10 @@ class IpLimitManager_PlayerScript : public PlayerScript
 public:
     IpLimitManager_PlayerScript() : PlayerScript("IpLimitManager_PlayerScript") {}
 
-    void OnLogin(Player* player) override
+    // 한국어 주석: 플레이어 로그인 시 IP 제한 확인
+    void OnLogin(Player* player)
     {
-        if (!sConfigMgr->GetBoolDefault("EnableIpLimitManager", true))
+        if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
             return;
 
         std::string ip = player->GetSession()->GetRemoteAddress();
@@ -34,12 +40,13 @@ public:
 
         if (ipConnectionCount[ip] > 1)
         {
-            std::string msg = sConfigMgr->GetStringDefault("IpLimitKickMessage", "Multiple connections from the same IP are not allowed.");
+            std::string msg = sConfigMgr->GetOption<std::string>("IpLimitKickMessage", "Multiple connections from the same IP are not allowed.");
             player->GetSession()->KickPlayer(msg.c_str());
         }
     }
 
-    void OnLogout(Player* player) override
+    // 한국어 주석: 플레이어 로그아웃 시 IP 연결 수 감소
+    void OnLogout(Player* player)
     {
         std::string ip = player->GetSession()->GetRemoteAddress();
 
@@ -60,47 +67,52 @@ class IpLimitManager_CommandScript : public CommandScript
 public:
     IpLimitManager_CommandScript() : CommandScript("IpLimitManager_CommandScript") {}
 
-    std::vector<ChatCommand> GetCommands() const override
+    Acore::ChatCommands::ChatCommandTable GetCommands() const override
     {
-        static std::vector<ChatCommand> allowIpCommandTable =
+        using namespace Acore::ChatCommands;
+
+        static ChatCommandTable allowIpCommandTable =
         {
-            { "add", SEC_ADMINISTRATOR, true, &HandleAddIpCommand, "" },
-            { "del", SEC_ADMINISTRATOR, true, &HandleDelIpCommand, "" },
+            ChatCommandBuilder("add", HandleAddIpCommand, SEC_ADMINISTRATOR, Console::No),
+            ChatCommandBuilder("del", HandleDelIpCommand, SEC_ADMINISTRATOR, Console::No)
         };
 
-        static std::vector<ChatCommand> commandTable =
+        static ChatCommandTable commandTable =
         {
-            { "allowip", SEC_ADMINISTRATOR, true, NULL, "", allowIpCommandTable }
+            ChatCommandBuilder("allowip", allowIpCommandTable)
         };
 
         return commandTable;
     }
 
+    // 한국어 주석: IP 추가 명령어 처리
     static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args)
     {
         if (args.empty())
             return false;
 
         std::string ip = args;
-        QueryResult result = WorldDatabase.PQuery("REPLACE INTO custom_allowed_ips (ip) VALUES ('%s')", ip.c_str());
+        QueryResult result = WorldDatabase.Query("REPLACE INTO custom_allowed_ips (ip) VALUES ('%s')", ip.c_str());
         allowedIps.insert(ip);
         handler->SendSysMessage("Added to allowed IP list.");
         return true;
     }
 
+    // 한국어 주석: IP 제거 명령어 처리
     static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args)
     {
         if (args.empty())
             return false;
 
         std::string ip = args;
-        WorldDatabase.PExecute("DELETE FROM custom_allowed_ips WHERE ip = '%s'", ip.c_str());
+        WorldDatabase.Execute("DELETE FROM custom_allowed_ips WHERE ip = '%s'", ip.c_str());
         allowedIps.erase(ip);
         handler->SendSysMessage("Removed from the allowed IP list.");
         return true;
     }
 };
 
+// 한국어 주석: DB에서 허용된 IP 목록 로드
 void LoadAllowedIpsFromDB()
 {
     QueryResult result = WorldDatabase.Query("SELECT ip FROM custom_allowed_ips");
@@ -110,10 +122,11 @@ void LoadAllowedIpsFromDB()
     do
     {
         Field* fields = result->Fetch();
-        allowedIps.insert(fields[0].GetString());
+        allowedIps.insert(fields[0].Get<std::string>());
     } while (result->NextRow());
 }
 
+// 한국어 주석: 모듈 스크립트 등록
 void Addmod_iplimit_managerScripts()
 {
     LoadAllowedIpsFromDB();
