@@ -1,4 +1,4 @@
-# Modules 폴더 내부용 CMake
+# folder Modules in CMakelists
 
 set(MOD_NAME "mod-iplimit-manager")
 
