@@ -2,8 +2,8 @@
 # mod-iplimit-manager
 #
 
-# Whether the module is enabled (0 = disabled, 1 = enabled)
+# 모듈 활성화 여부 (0 = 비활성화, 1 = 활성화)
 EnableIpLimitManager = 1
 
-# Message to display to users when they log in multiple times
-IpLimitKickMessage = "Multiple connections from the same IP are restricted."
+# 사용자가 여러 번 로그인할 때 표시할 메시지
+IpLimitKickMessage = "동일한 IP에서 여러 연결은 제한됩니다."
