@@ -1,5 +1,4 @@
 # mod-iplimit-manager
-The AzerothCore module `mod-iplimit-manager` limits connections to only one client from the same IP address.
 이 AzerothCore 모듈 `mod-iplimit-manager`는 동일한 IP 주소에서 하나의 클라이언트 연결만 허용합니다.
 
 ## 기능
