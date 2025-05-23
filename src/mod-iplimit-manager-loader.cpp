@@ -32,3 +32,5 @@ void Addmod_iplimit_managerLoader()// Function executed when module is loaded
 {
     new mod_iplimit_managerLoader();
 }
+
+static void* _init = (Addmod_iplimit_managerLoader(), nullptr);
