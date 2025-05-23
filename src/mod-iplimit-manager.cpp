@@ -327,8 +327,8 @@ public:
     static bool HandleListAllCommand(ChatHandler* handler, std::string const& /*args*/)
     {
         QueryResult result = LoginDatabase.Query(
-            "SELECT ip, FROM_UNIXTIME(added_at) as added_date, COALESCE(description, 'No description') as desc "
-            "FROM custom_allowed_ips ORDER BY added_at DESC"
+            "SELECT ip, COALESCE(description, 'No description') as desc "
+            "FROM custom_allowed_ips"
         );
 
         if (!result)
@@ -338,17 +338,16 @@ public:
         }
 
         handler->PSendSysMessage("=== Allowed IP List ===");
-        handler->PSendSysMessage("IP Address | Added Date | Description");
+        handler->PSendSysMessage("IP Address | Description");
         handler->PSendSysMessage("----------------------------------------");
 
         do
         {
             Field* fields = result->Fetch();
             std::string ip = fields[0].Get<std::string>();
-            std::string addedDate = fields[1].Get<std::string>();
-            std::string desc = fields[2].Get<std::string>();
+            std::string desc = fields[1].Get<std::string>();
 
-            handler->PSendSysMessage("%s | %s | %s", ip.c_str(), addedDate.c_str(), desc.c_str());
+            handler->PSendSysMessage("%s | %s", ip.c_str(), desc.c_str());
         } while (result->NextRow());
 
         handler->PSendSysMessage("----------------------------------------");
@@ -364,8 +363,7 @@ void LoadAllowedIpsFromDB()
         LoginDatabase.Execute(
             "CREATE TABLE IF NOT EXISTS `custom_allowed_ips` ("
             "`ip` varchar(15) NOT NULL DEFAULT '127.0.0.1',"
-            "`added_at` bigint unsigned NOT NULL DEFAULT UNIX_TIMESTAMP(),"  // 추가 시간 (unix epoch)
-            "`description` varchar(255) DEFAULT NULL,"  // 설명 필드
+            "`description` varchar(255) DEFAULT NULL,"
             "PRIMARY KEY (`ip`)"
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='List of allowed IPs'"
         );
