@@ -1,9 +1,45 @@
 #
-# mod-iplimit-manager
+###################################################################################################
+#     ____    __                                         ____                           
+#    /\  _`\ /\ \__                                    /\  _`\                         
+#    \ \,\L\_\ \ ,_\  __  __    ___     ___     __    \ \ \/\_\    ___   _ __   ___   
+#     \/_\__ \\ \ \/ /\ \/\ \  / __`\ /' _ `\ /'__`\   \ \ \/_/_  / __`\/\`'__\/'___\ 
+#       /\ \L\ \ \ \_\ \ \_\ \/\ \L\ \/\ \/\ \/\ \L\.\   \ \ \L\ \/\ \L\ \ \ \//\ \__/
+#       \ `\____\ \__\\ \____/\ \____/\ \_\ \_\ \__/.\_\  \ \____/\ \____/\ \_\\ \____\
+#        \/_____/\/__/ \/___/  \/___/  \/_/\/_/\/__/\/_/   \/___/  \/___/  \/_/ \/____/
+#
+###################################################################################################
+
+[worldserver]
+
+###################################################################################################
+#
+#    IP Limit Manager
+#        Description: 동일 IP에서의 다중 접속을 제한하는 모듈입니다.
 #
 
-# 모듈 활성화 여부 (0 = 비활성화, 1 = 활성화)
+#
+#    EnableIpLimitManager
+#        Description: IP Limit Manager 모듈의 활성화 여부를 설정합니다.
+#        Default:     1 - (활성화)
+#                    0 - (비활성화)
+#
+
 EnableIpLimitManager = 1
 
-# 사용자가 여러 번 로그인할 때 표시할 메시지
-IpLimitKickMessage = "동일한 IP에서 여러 연결은 제한됩니다."
+#
+#    IpLimitManager.Announce.Enable
+#        Description: IP Limit Manager 모듈이 활성화되어 있음을 플레이어 로그인 시 알립니다.
+#        Default:     1 - (활성화)
+#                    0 - (비활성화)
+#
+
+IpLimitManager.Announce.Enable = 1
+
+#
+#    IpLimitKickMessage
+#        Description: 동일 IP에서 여러 접속 시도 시 표시될 메시지
+#        Default:     "Multiple connections from the same IP are not allowed."
+#
+
+IpLimitKickMessage = "Multiple connections from the same IP are not allowed."
