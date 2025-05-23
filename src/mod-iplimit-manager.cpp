@@ -22,36 +22,61 @@ public:
     void OnLogin(Player* player)
     {
         if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
+        {
+            LOG_INFO("module", "IpLimitManager disabled in config.");
             return;
+        }
 
         std::string ip = player->GetSession()->GetRemoteAddress();
+        LOG_INFO("module", "OnLogin() called for player '{}', IP: {}", player->GetName(), ip);
 
         std::lock_guard<std::mutex> lock(ipMutex);
 
         if (allowedIps.find(ip) != allowedIps.end())
+        {
+            LOG_INFO("module", "IP {} is in allowed list. Skipping restriction.", ip);
             return;
+        }
 
         ipConnectionCount[ip]++;
+        LOG_INFO("module", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);
 
         if (ipConnectionCount[ip] > 1)
         {
             std::string msg = sConfigMgr->GetOption<std::string>("IpLimitKickMessage", "Multiple connections from the same IP are not allowed.");
+            LOG_INFO("module", "Kicking player '{}'. Reason: {}", player->GetName(), msg);
             player->GetSession()->KickPlayer(msg.c_str());
+        }
+        else
+        {
+            LOG_INFO("module", "Player '{}' login allowed. No IP conflict.", player->GetName());
         }
     }
 
     void OnLogout(Player* player)
     {
         std::string ip = player->GetSession()->GetRemoteAddress();
+        LOG_INFO("module", "OnLogout() called for player '{}', IP: {}", player->GetName(), ip);
 
         std::lock_guard<std::mutex> lock(ipMutex);
 
         if (ipConnectionCount.find(ip) != ipConnectionCount.end())
         {
-            if (--ipConnectionCount[ip] == 0)
+            ipConnectionCount[ip]--;
+            LOG_INFO("module", "IP {} decremented connection count: {}", ip, ipConnectionCount[ip]);
+
+            if (ipConnectionCount[ip] <= 0)
+            {
                 ipConnectionCount.erase(ip);
+                LOG_INFO("module", "IP {} removed from connection count map.", ip);
+            }
+        }
+        else
+        {
+            LOG_WARN("module", "OnLogout: IP {} not found in map.", ip);
         }
     }
+
 };
 
 class IpLimitManager_CommandScript : public CommandScript
@@ -83,7 +108,7 @@ public:
             return false;
 
         std::string ip = args;
-        WorldDatabase.Query("REPLACE INTO custom_allowed_ips (ip) VALUES ('%s')", ip.c_str());
+        WorldDatabase.Execute("REPLACE INTO custom_allowed_ips (ip) VALUES ('" + ip + "')");
         allowedIps.insert(ip);
         handler->SendSysMessage("Added to allowed IP list.");
         return true;
@@ -95,7 +120,7 @@ public:
             return false;
 
         std::string ip = args;
-        WorldDatabase.Execute("DELETE FROM custom_allowed_ips WHERE ip = '%s'", ip.c_str());
+        WorldDatabase.Execute("DELETE FROM custom_allowed_ips WHERE ip = '" + ip + "'");
         allowedIps.erase(ip);
         handler->SendSysMessage("Removed from the allowed IP list.");
         return true;
