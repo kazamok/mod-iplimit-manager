@@ -16,6 +16,8 @@
 #
 #    IP Limit Manager
 #        Description: 동일 IP에서의 다중 접속을 제한하는 모듈입니다.
+#        Default:     Enabled
+#        Author:      AzerothCore Community
 #
 
 #
@@ -37,9 +39,26 @@ EnableIpLimitManager = 1
 IpLimitManager.Announce.Enable = 1
 
 #
-#    IpLimitKickMessage
-#        Description: 동일 IP에서 여러 접속 시도 시 표시될 메시지
-#        Default:     "Multiple connections from the same IP are not allowed."
+#    IpLimitManager.KickDelay
+#        Description: 중복 접속 발견 시 강제 퇴장까지의 대기 시간(초)
+#        Default:     30
 #
 
-IpLimitKickMessage = "Multiple connections from the same IP are not allowed."
+IpLimitManager.KickDelay = 30
+
+#
+#    IpLimitManager.Debug.Enable
+#        Description: 디버그 로그 활성화 여부
+#        Default:     0 - (비활성화)
+#                    1 - (활성화)
+#
+
+IpLimitManager.Debug.Enable = 0
+
+#
+#    IpLimitKickMessage
+#        Description: 동일 IP에서 여러 접속 시도 시 표시될 메시지
+#        Default:     "다중 접속이 감지되어 접속이 차단되었습니다."
+#
+
+IpLimitKickMessage = "다중 접속이 감지되어 접속이 차단되었습니다."
