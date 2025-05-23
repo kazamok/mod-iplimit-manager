@@ -1,8 +1,8 @@
 -- filename: mod-iplimit-manager.sql
 -- Description: SQL script for mod-iplimit-manager (IPv4 only)
 
-CREATE DATABASE IF NOT EXISTS `acore_world`;
-USE `acore_world`;
+CREATE DATABASE IF NOT EXISTS `acore_characters`;
+USE `acore_characters`;
 
 DROP TABLE IF EXISTS `custom_allowed_ips`;
 
