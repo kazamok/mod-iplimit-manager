@@ -1,9 +1,4 @@
 // Filename mod-iplimit-manager.cpp
-// IP Connection Limit Manager Module
-// This module limits multiple client connections from the same IP.
-// By default, only one connection per IP is allowed.
-// Exception IPs can be added or removed by command.
-
 #include "Player.h"
 #include "World.h"
 #include "ScriptMgr.h"
@@ -24,7 +19,7 @@ class IpLimitManager_PlayerScript : public PlayerScript
 public:
     IpLimitManager_PlayerScript() : PlayerScript("IpLimitManager_PlayerScript") {}
 
-    void OnLogin(Player* player) // Check IP restrictions when player logs in
+    void OnLogin(Player* player)
     {
         if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
             return;
@@ -45,7 +40,7 @@ public:
         }
     }
 
-    void OnLogout(Player* player) // Reduce IP connection count when player logs out
+    void OnLogout(Player* player)
     {
         std::string ip = player->GetSession()->GetRemoteAddress();
 
@@ -54,9 +49,7 @@ public:
         if (ipConnectionCount.find(ip) != ipConnectionCount.end())
         {
             if (--ipConnectionCount[ip] == 0)
-            {
                 ipConnectionCount.erase(ip);
-            }
         }
     }
 };
@@ -84,19 +77,19 @@ public:
         return commandTable;
     }
 
-    static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args) // IP Additional command processing
+    static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args)
     {
         if (args.empty())
             return false;
 
         std::string ip = args;
-        QueryResult result = WorldDatabase.Query("REPLACE INTO custom_allowed_ips (ip) VALUES ('%s')", ip.c_str());
+        WorldDatabase.Query("REPLACE INTO custom_allowed_ips (ip) VALUES ('%s')", ip.c_str());
         allowedIps.insert(ip);
         handler->SendSysMessage("Added to allowed IP list.");
         return true;
     }
 
-    static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args) // IP Remove command processing
+    static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args)
     {
         if (args.empty())
             return false;
@@ -109,22 +102,85 @@ public:
     }
 };
 
-void LoadAllowedIpsFromDB() // Load allowed IP list from DB
+void LoadAllowedIpsFromDB()
 {
-    QueryResult result = WorldDatabase.Query("SELECT ip FROM custom_allowed_ips");
-    if (!result)
-        return;
-
-    do
+    try
     {
-        Field* fields = result->Fetch();
-        allowedIps.insert(fields[0].Get<std::string>());
-    } while (result->NextRow());
+        // 첫 번째 쿼리: 테이블 존재 확인
+        if (QueryResult tableCheck = WorldDatabase.Query("SHOW TABLES LIKE 'custom_allowed_ips'"))
+        {
+            if (tableCheck->GetRowCount() == 0)
+            {
+                LOG_WARN("server.loading", ">> Table `custom_allowed_ips` does not exist. Creating it...");
+                WorldDatabase.Execute(
+                    "CREATE TABLE IF NOT EXISTS `custom_allowed_ips` ("
+                    "`ip` varchar(15) NOT NULL DEFAULT '127.0.0.1',"
+                    "PRIMARY KEY (`ip`)"
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='List of allowed IPs'"
+                );
+                LOG_INFO("server.loading", ">> Created `custom_allowed_ips` table.");
+                return;
+            }
+        }
+        else
+        {
+            LOG_ERROR("server.loading", ">> Unable to query WorldDatabase. Is it connected?");
+            return;
+        }
+
+        // 두 번째 쿼리: 데이터 로드
+        if (QueryResult result = WorldDatabase.Query("SELECT ip FROM custom_allowed_ips"))
+        {
+            uint32 count = 0;
+            do
+            {
+                Field* fields = result->Fetch();
+                std::string ip = fields[0].Get<std::string>();
+
+                if (!ip.empty() && ip.length() <= 15)
+                {
+                    allowedIps.insert(ip);
+                    ++count;
+                }
+                else
+                {
+                    LOG_ERROR("server.loading", ">> Invalid IP found in DB: %s", ip.c_str());
+                }
+            } while (result->NextRow());
+
+            LOG_INFO("server.loading", ">> Loaded %u allowed IPs from DB.", count);
+        }
+        else
+        {
+            LOG_WARN("server.loading", ">> No allowed IPs found in `custom_allowed_ips`.");
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("server.loading", ">> Exception occurred while loading allowed IPs: %s", e.what());
+    }
+    catch (...)
+    {
+        LOG_ERROR("server.loading", ">> Unknown exception occurred in LoadAllowedIpsFromDB!");
+    }
 }
 
-void Addmod_iplimit_managerScripts() // Register module script
+
+// Load IP list only after full DB initialization
+class IpLimitManagerWorldScript : public WorldScript
 {
-    LoadAllowedIpsFromDB();
+public:
+    IpLimitManagerWorldScript() : WorldScript("IpLimitManagerWorldScript") {}
+
+    void OnStartup() override
+    {
+        LoadAllowedIpsFromDB();
+    }
+};
+
+void Addmod_iplimit_managerScripts()
+{
     new IpLimitManager_PlayerScript();
     new IpLimitManager_CommandScript();
+    new IpLimitManagerWorldScript();
 }
