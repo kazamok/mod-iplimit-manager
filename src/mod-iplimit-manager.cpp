@@ -341,7 +341,7 @@ public:
             }
 
             // 첫 번째 경고 메시지
-            ChatHandler(player->GetSession()).PSendSysMessage("경고: 현재 IP에서 이미 다른 계정이 접속 중입니다. 30초 후 접속이 종료됩니다.");
+            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r 경고: 현재 IP에서 이미 다른 계정이 접속 중입니다. 30초 후 접속이 종료됩니다.");
         }
         else if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
         {
@@ -361,14 +361,14 @@ public:
             // 10초 남았을 때 한 번만 메시지 표시
             if (remainingTime <= 10 && !it->second.messageSent)
             {
-                ChatHandler(player->GetSession()).PSendSysMessage("경고: 10초 후 접속이 종료됩니다.");
+                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r 경고: 10초 후 접속이 종료됩니다.");
                 it->second.messageSent = true;
             }
 
             // 시간이 다 되면 강제 퇴장
             if (remainingTime == 0)
             {
-                ChatHandler(player->GetSession()).PSendSysMessage("IP 제한 정책에 따라 접속이 종료됩니다.");
+                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r IP 제한 정책에 따라 접속이 종료됩니다.");
                 player->GetSession()->KickPlayer();
                 
                 // 데이터베이스에서 온라인 상태 해제
