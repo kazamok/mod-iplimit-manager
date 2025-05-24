@@ -19,7 +19,7 @@ IP Limit Manager는 AzerothCore 서버에서 동일 IP에서의 다중 접속을
 ## ⚙️ 설정 방법 (선택사항)
 
 1. 로컬 주소 127.0.0.1 은 기본으로 추가되어 있습니다.
-2. 모듈 설정을 변경하려면 configs/modules/mod-iplimit-manager.conf.dist 를 편집하세요.
+2. 모듈 설정을 변경하려면 configs/modules/mod-iplimit-manager/mod-iplimit-manager.conf.dist 를 편집하세요.
 
 ## 📊 데이터
 - 📌 타입: Server/Player
