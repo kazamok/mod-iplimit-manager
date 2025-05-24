@@ -47,7 +47,7 @@ make install
 
 2. 주요 설정 옵션
    - `EnableIpLimitManager`: 모듈 활성화 여부 (기본값: 1)
-   - `IpLimitManager.Announce.Enable`: 접속 시 알림 메시지 표시 (기본값: 0)
+   - `IpLimitManager.Announce.Enable`: 접속 시 알림 메시지 표시 (기본값: 1)
 
 ## 📊 기술 스펙
 - 타입: Server/Player Script
