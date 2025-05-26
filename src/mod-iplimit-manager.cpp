@@ -16,7 +16,6 @@
 #include <iomanip>
 #include <filesystem>
 #include <ctime>
-#include <vector>
 
 std::mutex ipMutex;
 std::unordered_map<std::string, uint32> ipConnectionCount;
@@ -176,17 +175,6 @@ static bool IsValidIP(const std::string& ip)
     return segmentCount == 4;
 }
 
-// ChatCommand 구조체 정의
-struct ChatCommand
-{
-    char const* Name;
-    uint32 SecurityLevel;
-    bool AllowConsole;
-    bool (*Handler)(ChatHandler* handler, const char* args);
-    std::string Help;
-    ChatCommand* ChildCommands;
-};
-
 // 계정 인증 단계에서 IP 체크를 위한 새로운 클래스
 class IpLimitManager_AccountScript : public AccountScript
 {
@@ -232,23 +220,24 @@ public:
         ipConnectionCount[ip]++;
         LOG_DEBUG("module.iplimit", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);
 
+        // 1. 계정 로그인 시 중복 접속 차단
         if (ipConnectionCount[ip] > 1)
         {
-            LOG_INFO("module.iplimit", "Blocking login for account {} due to multiple connections from IP {}", username, ip);
+            LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 이미 다른 계정이 접속 중이므로 계정 ({})이 차단됩니다.", ip, username);
             ipConnectionCount[ip]--;
-            
+
             // 계정 즉시 차단
             uint32 duration = 1; // 1초
             time_t banTime = GameTime::GetGameTime().count();
             time_t unbanTime = banTime + duration;
-            
+
             // 계정 잠금 및 밴 처리
             LoginDatabase.DirectExecute("UPDATE account SET locked = 1, online = 0 WHERE id = {}", accountId);
             LoginDatabase.DirectExecute("DELETE FROM account_banned WHERE id = {}", accountId);
             LoginDatabase.DirectExecute("INSERT INTO account_banned (id, bandate, unbandate, bannedby, banreason, active) "
                 "VALUES ({}, {}, {}, 'IP Limit Manager', 'Multiple connections from same IP', 1)",
                 accountId, banTime, unbanTime);
-            
+
             return;
         }
     }
@@ -308,7 +297,7 @@ public:
                 // 모듈 알림 메시지 표시
                 if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
                 {
-                    ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r IP 제한 관리 모듈이 동작 중입니다.");
+                    ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행 중입니다.");
                 }
                 return;
             }
@@ -322,13 +311,13 @@ public:
             "WHERE a.last_ip = '{}' AND c.online = 1 AND c.account != {}",
             playerIp, accountId);
 
+        // 2. 플레이어 로그인 시 중복 접속 감지 및 퇴장 예약
         if (result)
         {
             Field* fields = result->Fetch();
             std::string existingCharName = fields[1].Get<std::string>();
             
-            LOG_INFO("module.iplimit", "Scheduling kick for player {} (Account: {}) due to existing connection from IP {}",
-                player->GetName(), accountId, playerIp);
+            LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 이미 다른 캐릭터가 접속 중이므로 캐릭터 ({})가 30초 후 강제 퇴장이 예약됩니다.", playerIp, player->GetName());
 
             // 30초 후 강제 퇴장 예약
             {
@@ -341,11 +330,11 @@ public:
             }
 
             // 첫 번째 경고 메시지
-            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r 경고: 현재 IP에서 이미 다른 계정이 접속 중입니다. 30초 후 접속이 종료됩니다.");
+            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 다른 캐릭터가 같은 IP 주소에서 이미 접속 중입니다. 30초 후 연결이 끊어집니다.");
         }
         else if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
         {
-            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r IP 제한 관리 모듈이 동작 중입니다.");
+            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행되고 있습니다.");
         }
     }
 
@@ -361,14 +350,14 @@ public:
             // 10초 남았을 때 한 번만 메시지 표시
             if (remainingTime <= 10 && !it->second.messageSent)
             {
-                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r 경고: 10초 후 접속이 종료됩니다.");
+                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 10초 후에 연결이 끊어집니다.");
                 it->second.messageSent = true;
             }
 
             // 시간이 다 되면 강제 퇴장
             if (remainingTime == 0)
             {
-                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP 제한 관리자]|r IP 제한 정책에 따라 접속이 종료됩니다.");
+                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r IP 제한으로 인해 연결이 끊어졌습니다.");
                 player->GetSession()->KickPlayer();
                 
                 // 데이터베이스에서 온라인 상태 해제
@@ -386,29 +375,28 @@ class IpLimitManager_CommandScript : public CommandScript
 public:
     IpLimitManager_CommandScript() : CommandScript("IpLimitManager_CommandScript") {}
 
-    std::vector<Acore::ChatCommands::ChatCommandBuilder> GetCommands() const override
+    Acore::ChatCommands::ChatCommandTable GetCommands() const override
     {
-        static std::vector<ChatCommand> allowipSubcommands =
+        using namespace Acore::ChatCommands;
+
+        static ChatCommandTable allowIpCommandTable =
         {
-            { "add", SEC_ADMINISTRATOR, false, &HandleAddIpCommand, "IP 주소를 허용 목록에 추가합니다.", nullptr },
-            { "del", SEC_ADMINISTRATOR, false, &HandleDelIpCommand, "IP 주소를 허용 목록에서 제거합니다.", nullptr },
-            { nullptr, 0, false, nullptr, nullptr, nullptr }
+            { "add", HandleAddIpCommand, SEC_ADMINISTRATOR, Console::No },
+            { "del", HandleDelIpCommand, SEC_ADMINISTRATOR, Console::No },
+            { "listall", HandleListAllCommand, SEC_ADMINISTRATOR, Console::No }
         };
 
-        static std::vector<ChatCommand> commandTable =
+        static ChatCommandTable commandTable =
         {
-            { "allowip", SEC_ADMINISTRATOR, false, nullptr, "IP 허용 목록 관리 명령어입니다.", &allowipSubcommands[0] },
-            { nullptr, 0, false, nullptr, nullptr, nullptr }
+            { "allowip", allowIpCommandTable }
         };
-
-        std::vector<Acore::ChatCommands::ChatCommandBuilder> builders;
-        builders.emplace_back(commandTable);
-        return builders;
+ 
+        return commandTable;
     }
 
-    static bool HandleAddIpCommand(ChatHandler* handler, const char* args)
+    static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args)
     {
-        if (!args || !*args)
+        if (args.empty())
         {
             handler->PSendSysMessage("사용법: .allowip add <ip>");
             handler->PSendSysMessage("예시: .allowip add 192.168.1.1");
@@ -437,9 +425,9 @@ public:
         return true;
     }
 
-    static bool HandleDelIpCommand(ChatHandler* handler, const char* args)
+    static bool HandleDelIpCommand(ChatHandler* handler, std::string const& args)
     {
-        if (!args || !*args)
+        if (args.empty())
         {
             handler->PSendSysMessage("사용법: .allowip del <ip>");
             handler->PSendSysMessage("예시: .allowip del 192.168.1.1");
@@ -467,6 +455,52 @@ public:
         handler->PSendSysMessage("IP {} 가 허용 목록에서 제거되었습니다.", ip);
         return true;
     }
+
+    static bool HandleListAllCommand(ChatHandler* handler, std::string const& /*args*/)
+    {
+        try 
+        {
+            QueryResult result = LoginDatabase.Query("SELECT ip, COALESCE(description, '설명 없음') as desc FROM custom_allowed_ips");
+
+            if (!result)
+            {
+                handler->PSendSysMessage("|cFF00FFFF알림:|r 허용된 IP 목록이 비어있습니다.");
+                return true;
+            }
+
+            handler->PSendSysMessage("|cFF00FF00=== 허용된 IP 목록 ===|r");
+            handler->PSendSysMessage("----------------------------------------");
+            handler->PSendSysMessage("|cFFFFFF00IP 주소           설명|r");
+            handler->PSendSysMessage("----------------------------------------");
+
+            uint32 count = 0;
+            do
+            {
+                Field* fields = result->Fetch();
+                std::string ip = fields[0].Get<std::string>();
+                std::string desc = fields[1].Get<std::string>();
+
+                // IP 주소를 15자리로 맞추고 왼쪽 정렬
+                std::string paddedIp = ip;
+                while (paddedIp.length() < 15)
+                    paddedIp += " ";
+
+                handler->PSendSysMessage("|cFFFFFF00{}|r  {}", paddedIp, desc);
+                count++;
+            } while (result->NextRow());
+
+            handler->PSendSysMessage("----------------------------------------");
+            handler->PSendSysMessage("총 |cFF00FF00{}|r개의 IP가 등록되어 있습니다.", count);
+            
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("module.iplimit", "IP 목록 조회 중 오류 발생: {}", e.what());
+            handler->PSendSysMessage("|cFFFF0000오류:|r IP 목록을 조회하는 중 오류가 발생했습니다.");
+            return false;
+        }
+    }
 };
 
 void LoadAllowedIpsFromDB()
@@ -480,13 +514,15 @@ void LoadAllowedIpsFromDB()
             return;
         }
 
-        LOG_INFO("module.iplimit", "IP Limit Manager 데이터베이스 초기화 중...");
+        // 3. DB 초기화 안내
+        LOG_INFO("module.iplimit", "IPLimit: 데이터베이스 초기화 중...");
         
         // 테이블 존재 여부 확인
         QueryResult checkTable = LoginDatabase.Query("SHOW TABLES LIKE 'custom_allowed_ips'");
         if (!checkTable)
         {
-            LOG_INFO("module.iplimit", "custom_allowed_ips 테이블 생성 중...");
+            // 4. 테이블 생성 안내
+            LOG_INFO("module.iplimit", "IPLimit: custom_allowed_ips 테이블을 생성합니다...");
             LoginDatabase.Execute(
                 "CREATE TABLE IF NOT EXISTS `custom_allowed_ips` ("
                 "`ip` varchar(15) NOT NULL DEFAULT '127.0.0.1',"
@@ -500,7 +536,8 @@ void LoadAllowedIpsFromDB()
                 "INSERT IGNORE INTO custom_allowed_ips (ip, description) "
                 "VALUES ('127.0.0.1', 'Default localhost')"
             );
-            LOG_INFO("module.iplimit", "테이블 생성 및 기본 데이터 추가 완료");
+            // 5. 테이블 생성 및 기본 데이터 추가 완료
+            LOG_INFO("module.iplimit", "IPLimit: 테이블 생성 및 기본 데이터 추가가 완료되었습니다.");
         }
 
         // 데이터 로드
@@ -529,7 +566,8 @@ void LoadAllowedIpsFromDB()
             } while (result->NextRow());
         }
 
-        LOG_INFO("module.iplimit", "데이터베이스에서 {}개의 허용된 IP를 로드했습니다", count);
+        // 6. 허용된 IP 로드 완료
+        LOG_INFO("module.iplimit", "IPLimit: 데이터베이스에서 {}개의 허용된 IP를 로드했습니다.", count);
     }
     catch (const std::exception& e)
     {
