@@ -368,6 +368,19 @@ public:
             }
         }
     }
+
+    // 캐릭터(플레이어) 종료 시 로그아웃 액션이 CSV에 정상적으로 기록됩니다.
+    void OnPlayerLogout(Player* player)
+    {
+        if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
+            return;
+
+        uint32 accountId = player->GetSession()->GetAccountId();
+        std::string playerIp = player->GetSession()->GetRemoteAddress();
+
+        // 로그아웃 액션 기록
+        LogAccountAction(accountId, playerIp, "logout");
+    }
 };
 
 class IpLimitManager_CommandScript : public CommandScript
@@ -379,11 +392,12 @@ public:
     {
         using namespace Acore::ChatCommands;
 
+        // help string 인자를 제거하여 기본 형태로 수정
         static ChatCommandTable allowIpCommandTable =
         {
-            { "add", HandleAddIpCommand, SEC_ADMINISTRATOR, Console::No },
-            { "del", HandleDelIpCommand, SEC_ADMINISTRATOR, Console::No },
-            { "listall", HandleListAllCommand, SEC_ADMINISTRATOR, Console::No }
+            { "append", HandleAddIpCommand, SEC_ADMINISTRATOR, Console::Yes },
+            { "remove", HandleDelIpCommand, SEC_ADMINISTRATOR, Console::Yes },
+            { "show",   HandleShowIpCommand, SEC_ADMINISTRATOR, Console::Yes }
         };
 
         static ChatCommandTable commandTable =
@@ -398,8 +412,8 @@ public:
     {
         if (args.empty())
         {
-            handler->PSendSysMessage("사용법: .allowip add <ip>");
-            handler->PSendSysMessage("예시: .allowip add 192.168.1.1");
+            handler->PSendSysMessage("사용법: .allowip append <ip>");
+            handler->PSendSysMessage("예시: .allowip append 192.168.1.1");
             return false;
         }
 
@@ -429,8 +443,8 @@ public:
     {
         if (args.empty())
         {
-            handler->PSendSysMessage("사용법: .allowip del <ip>");
-            handler->PSendSysMessage("예시: .allowip del 192.168.1.1");
+            handler->PSendSysMessage("사용법: .allowip remove <ip>");
+            handler->PSendSysMessage("예시: .allowip remove 192.168.1.1");
             return false;
         }
 
@@ -456,50 +470,60 @@ public:
         return true;
     }
 
-    static bool HandleListAllCommand(ChatHandler* handler, std::string const& /*args*/)
+    static bool HandleShowIpCommand(ChatHandler* handler, std::string const& args)
     {
-        try 
+        // 디버깅을 위한 로그 추가
+        LOG_INFO("module.iplimit", "HandleShowIpCommand 함수 실행 시작");
+
+        // 테이블 존재 여부 먼저 확인
+        QueryResult tableCheck = LoginDatabase.Query("SHOW TABLES LIKE 'custom_allowed_ips'");
+        if (!tableCheck)
         {
-            QueryResult result = LoginDatabase.Query("SELECT ip, COALESCE(description, '설명 없음') as desc FROM custom_allowed_ips");
-
-            if (!result)
-            {
-                handler->PSendSysMessage("|cFF00FFFF알림:|r 허용된 IP 목록이 비어있습니다.");
-                return true;
-            }
-
-            handler->PSendSysMessage("|cFF00FF00=== 허용된 IP 목록 ===|r");
-            handler->PSendSysMessage("----------------------------------------");
-            handler->PSendSysMessage("|cFFFFFF00IP 주소           설명|r");
-            handler->PSendSysMessage("----------------------------------------");
-
-            uint32 count = 0;
-            do
-            {
-                Field* fields = result->Fetch();
-                std::string ip = fields[0].Get<std::string>();
-                std::string desc = fields[1].Get<std::string>();
-
-                // IP 주소를 15자리로 맞추고 왼쪽 정렬
-                std::string paddedIp = ip;
-                while (paddedIp.length() < 15)
-                    paddedIp += " ";
-
-                handler->PSendSysMessage("|cFFFFFF00{}|r  {}", paddedIp, desc);
-                count++;
-            } while (result->NextRow());
-
-            handler->PSendSysMessage("----------------------------------------");
-            handler->PSendSysMessage("총 |cFF00FF00{}|r개의 IP가 등록되어 있습니다.", count);
-            
-            return true;
-        }
-        catch (const std::exception& e)
-        {
-            LOG_ERROR("module.iplimit", "IP 목록 조회 중 오류 발생: {}", e.what());
-            handler->PSendSysMessage("|cFFFF0000오류:|r IP 목록을 조회하는 중 오류가 발생했습니다.");
+            handler->PSendSysMessage("|cFFFF0000오류:|r custom_allowed_ips 테이블이 존재하지 않습니다.");
+            LOG_ERROR("module.iplimit", "custom_allowed_ips 테이블이 존재하지 않음");
             return false;
         }
+
+        LOG_INFO("module.iplimit", "테이블 존재 확인됨, 데이터 조회 중...");
+
+        QueryResult result = LoginDatabase.Query("SELECT ip, description FROM custom_allowed_ips");
+
+        LOG_INFO("module.iplimit", "쿼리 실행 완료, 결과 확인 중...");
+
+        // 쿼리 실패 시 처리
+        if (!result)
+        {
+            handler->PSendSysMessage("|cFF00FFFF알림:|r 허용된 IP 목록이 비어있습니다.");
+            LOG_INFO("module.iplimit", "쿼리 결과가 비어있음");
+            return true;
+        }
+
+        LOG_INFO("module.iplimit", "쿼리 결과 존재, 목록 출력 시작");
+        handler->PSendSysMessage("|cFF00FF00=== 허용된 IP 목록 ===|r");
+        handler->PSendSysMessage("----------------------------------------");
+        handler->PSendSysMessage("|cFFFFFF00IP 주소           설명|r");
+        handler->PSendSysMessage("----------------------------------------");
+
+        uint32 count = 0;
+        do
+        {
+            Field* fields = result->Fetch();
+
+            std::string ip = fields[0].Get<std::string>();
+            std::string desc = fields[1].Get<std::string>();
+
+            std::string paddedIp = ip;
+            while (paddedIp.length() < 15)
+                paddedIp += " ";
+
+            handler->PSendSysMessage("|cFFFFFF00{}|r  {}", paddedIp, desc);
+            count++;
+        } while (result->NextRow());
+
+        handler->PSendSysMessage("----------------------------------------");
+        handler->PSendSysMessage("총 |cFF00FF00{}|r개의 IP가 등록되어 있습니다.", count);
+
+        return true;
     }
 };
 
