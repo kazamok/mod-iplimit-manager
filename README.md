@@ -44,7 +44,7 @@ IP Limit Manager는 AzerothCore 서버에서 동일 IP에서의 다중 접속을
 - 💾 SQL: Yes (auth)
 
 ## 👥 크레딧
-- AzerothCore 팀
+- Kazamok
 - 모든 기여자들
 
 ## 📄 라이선스
