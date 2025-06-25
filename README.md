@@ -10,8 +10,8 @@ IP Limit Manager는 AzerothCore 서버에서 동일 IP에서의 다중 접속을
   - 기본적으로 동일 IP에서 1개의 계정만 접속 가능
   - 허용된 IP는 제한 없이 접속 가능
 - 📋 허용된 IP 주소 관리 (추가/삭제/조회)
-  - `.allowip add <ip>` - IP 주소를 허용 목록에 추가
-  - `.allowip del <ip>` - IP 주소를 허용 목록에서 제거
+  - `.allowip append <ip>` - IP 주소를 허용 목록에 추가
+  - `.allowip remove <ip>` - IP 주소를 허용 목록에서 제거
 - 📊 접속 로깅 시스템
   - 모든 접속 시도가 CSV 파일로 기록됨
   - 로그 파일명: `access_log_YYYY-MM-DD_HHMMSS.csv`
