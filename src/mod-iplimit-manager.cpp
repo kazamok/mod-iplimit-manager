@@ -39,10 +39,19 @@ std::string serverStartTime;
 // CSV 로깅 유틸리티 함수
 void EnsureLogDirectory()
 {
+    // logs 폴더가 없으면 생성하기, 그외 각종 시스템 로그도 여기에 저장됨
+    std::filesystem::path baseLogDir = "logs";
+    if (!std::filesystem::exists(baseLogDir))
+    {
+        std::filesystem::create_directory(baseLogDir);
+        LOG_INFO("module.iplimit", "Created base log directory: {}", baseLogDir.string());
+    }
+
     std::filesystem::path logDir = "logs/iplimit";
     if (!std::filesystem::exists(logDir))
     {
         std::filesystem::create_directories(logDir);
+        LOG_INFO("module.iplimit", "Created IPLimit log directory: {}", logDir.string());
     }
 }
 
