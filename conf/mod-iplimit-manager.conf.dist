@@ -38,3 +38,36 @@ EnableIpLimitManager = 1
 
 IpLimitManager.Announce.Enable = 1
 
+#
+#    IpLimitManager.MaxConnectionsPerIp
+#        Description: 특정 IP에서 허용할 최대 동시 접속 계정 수를 설정합니다.
+#        Default:     1
+#
+
+IpLimitManager.MaxConnectionsPerIp = 1
+
+#
+#    EnableAccountCreationIpLimit
+#        Description: 계정 생성 시 IP 제한 모듈의 활성화 여부를 설정합니다.
+#        Default:     1 - (활성화)
+#                    0 - (비활성화)
+#
+
+EnableAccountCreationIpLimit = 1
+
+#
+#    AccountCreationIpLimit.MaxAccountsPerIp
+#        Description: 특정 IP에서 일정 시간 내에 생성 가능한 최대 계정 수를 설정합니다.
+#        Default:     3
+#
+
+AccountCreationIpLimit.MaxAccountsPerIp = 3
+
+#
+#    AccountCreationIpLimit.TimeframeHours
+#        Description: 계정 생성 제한을 적용할 시간 범위(시간)를 설정합니다.
+#        Default:     24
+#
+
+AccountCreationIpLimit.TimeframeHours = 24
+

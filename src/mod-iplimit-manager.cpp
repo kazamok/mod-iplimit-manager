@@ -230,7 +230,9 @@ public:
         LOG_DEBUG("module.iplimit", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);
 
         // 1. 계정 로그인 시 중복 접속 차단
-        if (ipConnectionCount[ip] > 1)
+        // IpLimitManager.MaxConnectionsPerIp 설정 값을 가져와 동시 접속 제한에 적용
+        uint32 maxConnections = sConfigMgr->GetOption<uint32>("IpLimitManager.MaxConnectionsPerIp", 1);
+        if (ipConnectionCount[ip] > maxConnections)
         {
             LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 이미 다른 계정이 접속 중이므로 계정 ({})이 차단됩니다.", ip, username);
             ipConnectionCount[ip]--;
@@ -550,27 +552,53 @@ void LoadAllowedIpsFromDB()
         // 3. DB 초기화 안내
         LOG_INFO("module.iplimit", "IPLimit: 데이터베이스 초기화 중...");
         
-        // 테이블 존재 여부 확인
-        QueryResult checkTable = LoginDatabase.Query("SHOW TABLES LIKE 'custom_allowed_ips'");
-        if (!checkTable)
+        // custom_allowed_ips 테이블 존재 여부 확인 및 생성
+        QueryResult checkAllowedIpsTable = LoginDatabase.Query("SHOW TABLES LIKE 'custom_allowed_ips'");
+        if (!checkAllowedIpsTable)
         {
-            // 4. 테이블 생성 안내
             LOG_INFO("module.iplimit", "IPLimit: custom_allowed_ips 테이블을 생성합니다...");
             LoginDatabase.Execute(
                 "CREATE TABLE IF NOT EXISTS `custom_allowed_ips` ("
                 "`ip` varchar(15) NOT NULL DEFAULT '127.0.0.1',"
                 "`description` varchar(255) DEFAULT NULL,"
+                "`can_create_account` tinyint(1) NOT NULL DEFAULT '1',"
                 "PRIMARY KEY (`ip`)"
                 ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
             
-            // 기본 localhost IP 추가
             LoginDatabase.Execute(
-                "INSERT IGNORE INTO custom_allowed_ips (ip, description) "
-                "VALUES ('127.0.0.1', 'Default localhost')"
+                "INSERT IGNORE INTO custom_allowed_ips (ip, description, can_create_account) "
+                "VALUES ('127.0.0.1', 'Default localhost', 1)"
             );
-            // 5. 테이블 생성 및 기본 데이터 추가 완료
-            LOG_INFO("module.iplimit", "IPLimit: 테이블 생성 및 기본 데이터 추가가 완료되었습니다.");
+            LOG_INFO("module.iplimit", "IPLimit: custom_allowed_ips 테이블 생성 및 기본 데이터 추가 완료.");
+        }
+        else
+        {
+            // custom_allowed_ips 테이블에 can_create_account 컬럼이 없는 경우 추가
+            QueryResult checkColumn = LoginDatabase.Query("SHOW COLUMNS FROM `custom_allowed_ips` LIKE 'can_create_account'");
+            if (!checkColumn)
+            {
+                LOG_INFO("module.iplimit", "IPLimit: custom_allowed_ips 테이블에 'can_create_account' 컬럼을 추가합니다...");
+                LoginDatabase.Execute("ALTER TABLE `custom_allowed_ips` ADD COLUMN `can_create_account` tinyint(1) NOT NULL DEFAULT '1'");
+                LOG_INFO("module.iplimit", "IPLimit: 'can_create_account' 컬럼 추가 완료.");
+            }
+        }
+
+        // account_creation_log 테이블 존재 여부 확인 및 생성
+        QueryResult checkCreationLogTable = LoginDatabase.Query("SHOW TABLES LIKE 'account_creation_log'");
+        if (!checkCreationLogTable)
+        {
+            LOG_INFO("module.iplimit", "IPLimit: account_creation_log 테이블을 생성합니다...");
+            LoginDatabase.Execute(
+                "CREATE TABLE IF NOT EXISTS `account_creation_log` ("
+                "`ip` varchar(15) NOT NULL,"
+                "`creation_time` datetime NOT NULL,"
+                "`account_id` int(10) unsigned NOT NULL,"
+                "`account_username` varchar(50) NOT NULL,"
+                "PRIMARY KEY (`ip`, `creation_time`)"
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+            LOG_INFO("module.iplimit", "IPLimit: account_creation_log 테이블 생성 완료.");
         }
 
         // 데이터 로드
@@ -638,4 +666,56 @@ void Addmod_iplimit_managerScripts()
     new IpLimitManager_PlayerScript();
     new IpLimitManager_CommandScript();
     new IpLimitManagerWorldScript();
+}
+
+namespace mod_iplimit_manager
+{
+    bool IsAccountCreationAllowed(const std::string& ipAddress, uint32& currentCreations)
+    {
+        // EnableAccountCreationIpLimit 설정 확인
+        if (!sConfigMgr->GetOption<bool>("EnableAccountCreationIpLimit", true))
+        {
+            LOG_DEBUG("module.iplimit", "Account creation IP limit disabled in config.");
+            return true; // 설정에서 비활성화된 경우 항상 허용
+        }
+
+        // custom_allowed_ips 테이블에서 IP 조회 (생성 제한을 우회할 수 있는 IP인지 확인)
+        bool canCreate = false;
+        if (QueryResult allowedResult = LoginDatabase.Query("SELECT can_create_account FROM custom_allowed_ips WHERE ip = '{}'", ipAddress))
+        {
+            if (allowedResult->Fetch()[0].Get<bool>())
+            {
+                canCreate = true; // custom_allowed_ips에 있고 can_create_account가 true이면 생성 허용
+            }
+        }
+
+        if (canCreate)
+        {
+            LOG_DEBUG("module.iplimit", "IP {} is in allowed list for account creation. Skipping restriction.", ipAddress);
+            return true; // 허용된 IP는 제한 없이 생성 허용
+        }
+
+        // AccountCreationIpLimit.TimeframeHours 설정 값 가져오기
+        uint32 timeframeHours = sConfigMgr->GetOption<uint32>("AccountCreationIpLimit.TimeframeHours", 24);
+
+        // 24시간 이내 해당 IP에서 생성된 계정 수 확인
+        uint32 creationCount = 0;
+        if (QueryResult creationResult = LoginDatabase.Query("SELECT COUNT(*) FROM account_creation_log WHERE ip = '{}' AND creation_time >= DATE_SUB(NOW(), INTERVAL {} HOUR)", ipAddress, timeframeHours))
+        {
+            creationCount = creationResult->Fetch()[0].Get<uint32>();
+        }
+        currentCreations = creationCount; // 현재 생성된 계정 수 반환
+
+        // AccountCreationIpLimit.MaxAccountsPerIp 설정 값 가져오기
+        uint32 maxAccounts = sConfigMgr->GetOption<uint32>("AccountCreationIpLimit.MaxAccountsPerIp", 3);
+
+        // 생성 제한 (설정된 최대 계정 수 초과 여부 확인)
+        if (creationCount >= maxAccounts)
+        {
+            LOG_INFO("module.iplimit", "Account creation from IP {} denied. {} accounts created in last {} hours (max {} allowed).", ipAddress, creationCount, timeframeHours, maxAccounts);
+            return false; // 생성 제한 초과
+        }
+
+        return true; // 생성 허용
+    }
 }
