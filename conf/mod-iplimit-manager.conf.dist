@@ -1,9 +1,9 @@
 #
 ###################################################################################################
-#     ____    __                                         ____                           
-#    /\  _`\ /\ \__                                    /\  _`\                         
-#    \ \,\L\_\ \ ,_\  __  __    ___     ___     __    \ \ \/\_\    ___   _ __   ___   
-#     \/_\__ \\ \ \/ /\ \/\ \  / __`\ /' _ `\ /'__`\   \ \ \/_/_  / __`\/\`'__\/'___\ 
+#     ____    __                                         ____
+#    /\  _`\ /\ \__                                    /\  _`\
+#    \ \,\L\_\ \ ,_\  __  __    ___     ___     __    \ \ \/\_\    ___   _ __   ___
+#     \/_\__ \\ \ \/ /\ \/\ \  / __`\ /\' _ `\ /\'__`\   \ \ \/_/_  / __`\/\`'__\/\'___\
 #       /\ \L\ \ \ \_\ \ \_\ \/\ \L\ \/\ \/\ \/\ \L\.\   \ \ \L\ \/\ \L\ \ \ \//\ \__/
 #       \ `\____\ \__\\ \____/\ \____/\ \_\ \_\ \__/.\_\  \ \____/\ \____/\ \_\\ \____\
 #        \/_____/\/__/ \/___/  \/___/  \/_/\/_/\/__/\/_/   \/___/  \/___/  \/_/ \/____/
@@ -14,11 +14,11 @@
 
 ###################################################################################################
 #
-#    IP Limit Manager
-#        Description: 동일 IP에서의 다중 접속을 제한하는 모듈입니다.
-#        Default:     Enabled
+#    IP Limit Manager - 로그인 관련 설정
+#        Description: 동일 IP에서의 다중 접속을 제어하는 모듈의 로그인 관련 설정입니다.
 #        Author:      AzerothCore Community
 #
+###################################################################################################
 
 #
 #    EnableIpLimitManager
@@ -26,7 +26,6 @@
 #        Default:     1 - (활성화)
 #                    0 - (비활성화)
 #
-
 EnableIpLimitManager = 1
 
 #
@@ -35,7 +34,6 @@ EnableIpLimitManager = 1
 #        Default:     1 - (활성화)
 #                    0 - (비활성화)
 #
-
 IpLimitManager.Announce.Enable = 1
 
 #
@@ -43,8 +41,23 @@ IpLimitManager.Announce.Enable = 1
 #        Description: 특정 IP에서 허용할 최대 동시 접속 계정 수를 설정합니다.
 #        Default:     1
 #
-
 IpLimitManager.MaxConnectionsPerIp = 1
+
+#
+#    IpLimitManager.MaxConnectionsPerAllowedIp
+#        Description: 허용된 IP(custom_allowed_ips에 등록된 IP)에 대해 허용할 최대 동시 접속 계정 수를 설정합니다.
+#                     0으로 설정하면 무제한입니다.
+#        Default:     0 (무제한)
+#
+IpLimitManager.MaxConnectionsPerAllowedIp = 0
+
+###################################################################################################
+#
+#    IP Limit Manager - 계정 생성 관련 설정
+#        Description: 계정 생성 시 IP 제한을 관리하는 모듈의 계정 생성 관련 설정입니다.
+#        Author:      AzerothCore Community
+#
+###################################################################################################
 
 #
 #    EnableAccountCreationIpLimit
@@ -52,7 +65,6 @@ IpLimitManager.MaxConnectionsPerIp = 1
 #        Default:     1 - (활성화)
 #                    0 - (비활성화)
 #
-
 EnableAccountCreationIpLimit = 1
 
 #
@@ -60,7 +72,6 @@ EnableAccountCreationIpLimit = 1
 #        Description: 특정 IP에서 일정 시간 내에 생성 가능한 최대 계정 수를 설정합니다.
 #        Default:     3
 #
-
 AccountCreationIpLimit.MaxAccountsPerIp = 3
 
 #
@@ -68,6 +79,4 @@ AccountCreationIpLimit.MaxAccountsPerIp = 3
 #        Description: 계정 생성 제한을 적용할 시간 범위(시간)를 설정합니다.
 #        Default:     24
 #
-
 AccountCreationIpLimit.TimeframeHours = 24
-

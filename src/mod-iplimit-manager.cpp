@@ -1,4 +1,5 @@
 // Filename mod-iplimit-manager.cpp
+
 #include "Player.h"
 #include "World.h"
 #include "ScriptMgr.h"
@@ -208,6 +209,14 @@ public:
             username = fields[0].Get<std::string>();
             ip = fields[1].Get<std::string>();
             
+            // account_ip_usage 테이블 업데이트 로직 추가
+            LoginDatabase.Execute(
+                "INSERT INTO account_ip_usage (account_id, ip_address, first_login_time, last_login_time, login_count) "
+                "VALUES ({}, '{}', NOW(), NOW(), 1) "
+                "ON DUPLICATE KEY UPDATE last_login_time = NOW(), login_count = login_count + 1",
+                accountId, ip
+            );
+
             // CSV 로그 기록
             LogAccountAction(accountId, ip, "login");
         }
@@ -220,18 +229,29 @@ public:
 
         std::lock_guard<std::mutex> lock(ipMutex);
 
+        uint32 maxConnections;
         if (allowedIps.find(ip) != allowedIps.end())
         {
-            LOG_DEBUG("module.iplimit", "IP {} is in allowed list. Skipping restriction.", ip);
-            return;
+            // 허용된 IP에 대한 최대 연결 수 설정 (0이면 무제한)
+            maxConnections = sConfigMgr->GetOption<uint32>("IpLimitManager.MaxConnectionsPerAllowedIp", 0);
+            LOG_DEBUG("module.iplimit", "IP {} is in allowed list. Max connections for this IP: {}", ip, maxConnections == 0 ? "Unlimited" : std::to_string(maxConnections));
+            if (maxConnections == 0) // 0이면 무제한이므로 바로 리턴
+            {
+                ipConnectionCount[ip]++; // 무제한이라도 카운트는 증가시켜야 함 (로그아웃 시 감소를 위해)
+                return;
+            }
+        }
+        else
+        {
+            // 일반 IP에 대한 최대 연결 수 설정
+            maxConnections = sConfigMgr->GetOption<uint32>("IpLimitManager.MaxConnectionsPerIp", 1);
+            LOG_DEBUG("module.iplimit", "IP {} is not in allowed list. Max connections for this IP: {}", ip, maxConnections);
         }
 
         ipConnectionCount[ip]++;
         LOG_DEBUG("module.iplimit", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);
 
         // 1. 계정 로그인 시 중복 접속 차단
-        // IpLimitManager.MaxConnectionsPerIp 설정 값을 가져와 동시 접속 제한에 적용
-        uint32 maxConnections = sConfigMgr->GetOption<uint32>("IpLimitManager.MaxConnectionsPerIp", 1);
         if (ipConnectionCount[ip] > maxConnections)
         {
             LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 이미 다른 계정이 접속 중이므로 계정 ({})이 차단됩니다.", ip, username);
@@ -310,7 +330,7 @@ public:
                 {
                     ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행 중입니다.");
                 }
-                return;
+                // return; // 이 줄을 제거합니다.
             }
         }
 
