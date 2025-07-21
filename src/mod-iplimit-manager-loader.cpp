@@ -1,4 +1,6 @@
-// mod - iplimit - manager - loader.cpp
+
+/* filename:
+mod-iplimit-manager-loader.cpp */
 
 #include "ScriptMgr.h"
 
