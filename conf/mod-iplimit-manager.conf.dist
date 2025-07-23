@@ -53,9 +53,9 @@ IpLimitManager.MaxConnectionsPerAllowedIp = 0
 
 ###################################################################################################
 #
-#    IP Limit Manager - 계정 생성 관련 설정
+#    IP Limit Manager - 계정 생성 관련 설정, Authserver.conf에 이미 등록이 되어있으며 수정해도 의미없음
 #        Description: 계정 생성 시 IP 제한을 관리하는 모듈의 계정 생성 관련 설정입니다.
-#        Author:      AzerothCore Community
+#        Author:      Kazamok, AzerothCore Community
 #
 ###################################################################################################
 
