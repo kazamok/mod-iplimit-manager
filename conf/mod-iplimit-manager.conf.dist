@@ -45,7 +45,7 @@ IpLimitManager.MaxConnectionsPerIp = 1
 
 #
 #    IpLimitManager.MaxConnectionsPerAllowedIp
-#        Description: 허용된 IP(custom_allowed_ips에 등록된 IP)에 대해 허용할 최대 동시 접속 계정 수를 설정합니다.
+#        Description: 허용된 IP(ip_login_allowlist 테이블에 등록된 IP)에 대해 허용할 최대 동시 접속 계정 수를 설정합니다.
 #                     0으로 설정하면 무제한입니다.
 #        Default:     0 (무제한)
 #
