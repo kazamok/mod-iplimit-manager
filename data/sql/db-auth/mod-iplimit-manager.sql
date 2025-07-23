@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS `module_configs` (
 
 -- 계정 생성 IP 제한 설정 값 삽입 (멱등성 보장)
 INSERT IGNORE INTO `module_configs` (`config_name`, `config_value`, `description`) VALUES
-('AccountCreationIpLimit.MaxAccountsPerIp', '3', '특정 IP에서 일정 시간 내에 생성 가능한 최대 계정 수'),
+('AccountCreationIpLimit.MaxAccountsPerIp', '2', '특정 IP에서 일정 시간 내에 생성 가능한 최대 계정 수'),
 ('AccountCreationIpLimit.TimeframeHours', '24', '계정 생성 제한을 적용할 시간 범위(시간)');
 
 -- 어떤 IP가 어떤 계정에 의해 사용되었는지,
