@@ -70,9 +70,9 @@ EnableAccountCreationIpLimit = 1
 #
 #    AccountCreationIpLimit.MaxAccountsPerIp
 #        Description: 특정 IP에서 일정 시간 내에 생성 가능한 최대 계정 수를 설정합니다.
-#        Default:     3
+#        Default:     2
 #
-AccountCreationIpLimit.MaxAccountsPerIp = 3
+AccountCreationIpLimit.MaxAccountsPerIp = 2
 
 #
 #    AccountCreationIpLimit.TimeframeHours
