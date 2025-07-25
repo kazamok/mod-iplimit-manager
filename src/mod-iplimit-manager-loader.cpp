@@ -1,7 +1,3 @@
-
-/* filename:
-mod-iplimit-manager-loader.cpp */
-
 #include "ScriptMgr.h"
 
 // 전방 선언

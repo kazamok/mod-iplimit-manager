@@ -40,7 +40,3 @@ install(FILES ${CMAKE_CURRENT_LIST_DIR}/conf/mod-iplimit-manager.conf.dist DESTI
 
 # SQL 스크립트 설치 (Install SQL script)
 install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/data/sql/ DESTINATION ${CMAKE_INSTALL_PREFIX}/data/sql/)
-
-# INTERFACE 라이브러리 정의 및 src 디렉토리를 include 경로에 추가
-add_library(${MODULE_NAME} INTERFACE)
-target_include_directories(${MODULE_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/common)
