@@ -1,5 +1,6 @@
 
-/*
+
+/* filename:
 mod-iplimit-manager.cpp */
 
 
@@ -377,10 +378,7 @@ public:
             // 첫 번째 경고 메시지
             ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 다른 캐릭터가 같은 IP 주소에서 이미 접속 중입니다. 30초 후 연결이 끊어집니다.");
         }
-        else if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
-        {
-            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행되고 있습니다.");
-        }
+        
     }
 
     void OnPlayerUpdate(Player* player, uint32 diff)
