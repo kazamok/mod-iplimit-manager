@@ -16,10 +16,15 @@
 #include <iomanip>
 #include <filesystem>
 #include <ctime>
+#include <deque>
 
 std::mutex ipMutex;
 std::unordered_map<std::string, uint32> ipConnectionCount;
 std::set<std::string> allowedIps;
+// IP별 고유 계정 로그인 기록을 저장하기 위한 데이터 구조
+// <IP 주소, <(계정 ID, 로그인 시간) 목록>>
+std::unordered_map<std::string, std::deque<std::pair<uint32, time_t>>> ipLoginHistory;
+
 
 // 강제 퇴장 예정인 플레이어 관리를 위한 구조체와 맵
 struct KickInfo {
@@ -225,6 +230,51 @@ public:
             LOG_DEBUG("module.iplimit", "IP {} is in allowed list. Skipping restriction.", ip);
             return;
         }
+
+        // --- 새로운 기능: IP별 고유 계정 로그인 빈도 제한 ---
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
+        {
+            time_t now = GameTime::GetGameTime().count();
+            uint32 timeWindow = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.TimeWindowSeconds", 3600);
+            uint32 maxUniqueAccounts = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.MaxUniqueAccounts", 3);
+
+            // 1. 오래된 로그인 기록 제거
+            auto& history = ipLoginHistory[ip];
+            history.erase(std::remove_if(history.begin(), history.end(),
+                [now, timeWindow](const auto& record) {
+                    return (now - record.second) > timeWindow;
+                }), history.end());
+
+            // 2. 현재 시간창 내의 고유 계정 수 계산
+            std::set<uint32> uniqueAccounts;
+            for (const auto& record : history)
+            {
+                uniqueAccounts.insert(record.first);
+            }
+
+            // 3. 현재 로그인하는 계정이 새로운 계정인지 확인하고, 제한을 초과하는지 검사
+            bool isNewAccount = uniqueAccounts.find(accountId) == uniqueAccounts.end();
+            if (isNewAccount && uniqueAccounts.size() >= maxUniqueAccounts)
+            {
+                LOG_INFO("module.iplimit", "IPLimit: IP {} 에서 최근 {}초 동안 허용된 고유 계정 수({})를 초과하여 계정 {} ({})의 로그인을 차단합니다.",
+                    ip, timeWindow, maxUniqueAccounts, username, accountId);
+                
+                // 계정 즉시 차단 (기존 방식과 동일)
+                uint32 duration = 1; // 1초
+                time_t banTime = GameTime::GetGameTime().count();
+                time_t unbanTime = banTime + duration;
+                LoginDatabase.DirectExecute("UPDATE account SET locked = 1, online = 0 WHERE id = {}", accountId);
+                LoginDatabase.DirectExecute("DELETE FROM account_banned WHERE id = {}", accountId);
+                LoginDatabase.DirectExecute("INSERT INTO account_banned (id, bandate, unbandate, bannedby, banreason, active) "
+                    "VALUES ({}, {}, {}, 'IP Limit Manager', 'Unique account limit exceeded', 1)",
+                    accountId, banTime, unbanTime);
+                return; // 로그인 절차 중단
+            }
+
+            // 4. 유효한 로그인이면 기록에 추가
+            history.push_back({accountId, now});
+        }
+        // --- 새로운 기능 끝 ---
 
         ipConnectionCount[ip]++;
         LOG_DEBUG("module.iplimit", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);

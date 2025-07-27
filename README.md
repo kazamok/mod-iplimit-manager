@@ -17,6 +17,10 @@ IP Limit Manager는 AzerothCore 서버에서 동일 IP에서의 다중 접속을
   - 로그 파일명: `access_log_YYYY-MM-DD_HHMMSS.csv`
 - 👮 관리자 권한으로 IP 접근 제어
 - 💾 데이터베이스 기반 IP 관리
+- ⏱️ 로그인 빈도 제한 (계정 순회 방지)
+  - 설정된 시간 내에 동일 IP에서 접속할 수 있는 고유 계정 수를 제한
+  - 단일 계정의 반복 접속은 제한하지 않음
+  - 여러 계정을 빠르게 번갈아 접속하는 행위를 방지
 
 ## 📋 요구사항
 - AzerothCore v1.0.1 이상
@@ -36,6 +40,9 @@ IP Limit Manager는 AzerothCore 서버에서 동일 IP에서의 다중 접속을
 2. 모듈 설정을 변경하려면 configs/modules/mod-iplimit-manager.conf.dist 를 편집하세요.
    - `EnableIpLimitManager`: 모듈 활성화 여부 (기본값: 1)
    - `IpLimitManager.Announce.Enable`: 접속 시 알림 메시지 표시 (기본값: 1)
+   - `IpLimitManager.RateLimit.Enable`: 로그인 빈도 제한 기능 활성화 (기본값: 1)
+   - `IpLimitManager.RateLimit.TimeWindowSeconds`: 고유 계정 수를 체크할 시간 (초 단위, 기본값: 3600)
+   - `IpLimitManager.RateLimit.MaxUniqueAccounts`: 시간 내 허용되는 최대 고유 계정 수 (기본값: 3)
 
 ## 📊 데이터
 - 📌 타입: Server/Player
