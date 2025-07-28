@@ -20,6 +20,8 @@
 
 std::mutex ipMutex;
 std::unordered_map<std::string, uint32> ipConnectionCount;
+std::unordered_map<std::string, uint32> ipMaxConnectionLimits;
+std::unordered_set<std::string> rateLimitedIps;
 
 // IP별 제한 설정을 위한 구조체
 struct IpLimitSettings
@@ -35,10 +37,17 @@ std::unordered_map<std::string, std::deque<std::pair<uint32, time_t>>> ipLoginHi
 
 
 // 강제 퇴장 예정인 플레이어 관리를 위한 구조체와 맵
+enum class KickReason
+{
+    CONCURRENT_LIMIT,
+    RATE_LIMIT
+};
+
 struct KickInfo {
     uint32 accountId;
     uint32 kickTime;
     bool messageSent;
+    KickReason reason;
 };
 std::unordered_map<ObjectGuid, KickInfo> pendingKicks;
 std::mutex kickMutex;
@@ -250,6 +259,9 @@ public:
             maxUniqueAccounts = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.MaxUniqueAccounts", 1);
         }
 
+        // PlayerScript에서 사용할 수 있도록 최대 연결 수를 저장
+        ipMaxConnectionLimits[ip] = maxConnections;
+
         // --- 1. IP별 고유 계정 로그인 빈도 제한 ---
         if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
         {
@@ -270,47 +282,29 @@ public:
             bool isNewAccount = uniqueAccounts.find(accountId) == uniqueAccounts.end();
             if (isNewAccount && uniqueAccounts.size() >= maxUniqueAccounts)
             {
-                LOG_INFO("module.iplimit", "IPLimit: IP {} 에서 최근 {}초 동안 허용된 고유 계정 수({})를 초과하여 계정 {} ({})의 로그인을 차단합니다.",
-                    ip, timeWindow, maxUniqueAccounts, username, accountId);
-                
-                uint32 duration = 1;
-                time_t banTime = GameTime::GetGameTime().count();
-                time_t unbanTime = banTime + duration;
-                LoginDatabase.DirectExecute("UPDATE account SET locked = 1, online = 0 WHERE id = {}", accountId);
-                LoginDatabase.DirectExecute("DELETE FROM account_banned WHERE id = {}", accountId);
-                LoginDatabase.DirectExecute("INSERT INTO account_banned (id, bandate, unbandate, bannedby, banreason, active) "
-                    "VALUES ({}, {}, {}, 'IP Limit Manager', 'Unique account limit exceeded', 1)",
-                    accountId, banTime, unbanTime);
-                return;
+                LOG_INFO("module.iplimit", "IPLimit: IP {} 에서 최근 {}초 동안 허용된 고유 계정 수({})를 초과했습니다. PlayerScript에서 처리하도록 플래그를 설정합니다.",
+                    ip, timeWindow, maxUniqueAccounts);
+                rateLimitedIps.insert(ip);
             }
 
             history.push_back({accountId, now});
         }
 
         // --- 2. 동시 접속 제한 ---
-        ipConnectionCount[ip]++;
-        LOG_DEBUG("module.iplimit", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);
-
-        if (ipConnectionCount[ip] > maxConnections)
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.Max.Account.Enable", true))
         {
-            LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 허용된 최대 접속 수({})를 초과하여 계정 ({})이 차단됩니다.", ip, maxConnections, username);
-            ipConnectionCount[ip]--;
-
-            uint32 duration = 1;
-            time_t banTime = GameTime::GetGameTime().count();
-            time_t unbanTime = banTime + duration;
-
-            LoginDatabase.DirectExecute("UPDATE account SET locked = 1, online = 0 WHERE id = {}", accountId);
-            LoginDatabase.DirectExecute("DELETE FROM account_banned WHERE id = {}", accountId);
-            LoginDatabase.DirectExecute("INSERT INTO account_banned (id, bandate, unbandate, bannedby, banreason, active) "
-                "VALUES ({}, {}, {}, 'IP Limit Manager', 'Multiple connections from same IP', 1)",
-                accountId, banTime, unbanTime);
-            return;
+            ipConnectionCount[ip]++;
+            LOG_DEBUG("module.iplimit", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);
         }
     }
 
     void OnAccountLogout(uint32 accountId)
     {
+        if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
+        {
+            return;
+        }
+
         // 계정의 마지막 알려진 IP 가져오기
         if (QueryResult result = LoginDatabase.Query("SELECT last_ip FROM account WHERE id = {}", accountId))
         {
@@ -321,17 +315,20 @@ public:
                 // CSV 로그 기록
                 LogAccountAction(accountId, ip, "logout");
                 
-                std::lock_guard<std::mutex> lock(ipMutex);
-                
-                if (ipConnectionCount.find(ip) != ipConnectionCount.end())
+                if (sConfigMgr->GetOption<bool>("IpLimitManager.Max.Account.Enable", true))
                 {
-                    ipConnectionCount[ip]--;
-                    LOG_DEBUG("module.iplimit", "IP {} decremented connection count: {}", ip, ipConnectionCount[ip]);
-
-                    if (ipConnectionCount[ip] <= 0)
+                    std::lock_guard<std::mutex> lock(ipMutex);
+                    
+                    if (ipConnectionCount.find(ip) != ipConnectionCount.end())
                     {
-                        ipConnectionCount.erase(ip);
-                        LOG_DEBUG("module.iplimit", "IP {} removed from connection count map.", ip);
+                        ipConnectionCount[ip]--;
+                        LOG_DEBUG("module.iplimit", "IP {} decremented connection count: {}", ip, ipConnectionCount[ip]);
+
+                        if (ipConnectionCount[ip] <= 0)
+                        {
+                            ipConnectionCount.erase(ip);
+                            LOG_DEBUG("module.iplimit", "IP {} removed from connection count map.", ip);
+                        }
                     }
                 }
             }
@@ -366,43 +363,113 @@ public:
         }
 
         // 모듈 알림 메시지 표시
-        if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", true))
         {
-            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행 중입니다.");
+            bool maxConnEnabled = sConfigMgr->GetOption<bool>("IpLimitManager.Max.Account.Enable", true);
+            bool rateLimitEnabled = sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true);
+            std::string msg = "|cff4CFF00[IP Limit Manager]|r ";
+            bool active = false;
+
+            if (maxConnEnabled && rateLimitEnabled)
+            {
+                msg += "이 서버는 동시 접속 및 로그인 빈도 제한이 활성화되어 있습니다.";
+                active = true;
+            }
+            else if (maxConnEnabled)
+            {
+                msg += "이 서버는 동시 접속 제한이 활성화되어 있습니다.";
+                active = true;
+            }
+            else if (rateLimitEnabled)
+            {
+                msg += "이 서버는 로그인 빈도 제한이 활성화되어 있습니다.";
+                active = true;
+            }
+
+            if (active)
+            {
+                ChatHandler(player->GetSession()).PSendSysMessage(msg);
+            }
         }
 
-        // 이미 접속중인 다른 계정이 있는지 확인
-        QueryResult result = CharacterDatabase.Query(
-            "SELECT c.online, c.name, c.account "
-            "FROM characters c "
-            "INNER JOIN acore_auth.account a ON c.account = a.id "
-            "WHERE a.last_ip = '{}' AND c.online = 1 AND c.account != {}",
-            playerIp, accountId);
+        // --- 제한 로직 시작 ---
+        bool kickPlayer = false;
+        KickReason reason = KickReason::CONCURRENT_LIMIT; // 기본값
+        std::string reasonStrForLog;
 
-        // 2. 플레이어 로그인 시 중복 접속 감지 및 퇴장 예약
-        if (result)
+        // 1. 고유 계정 로그인 빈도 제한 확인
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
         {
-            Field* fields = result->Fetch();
-            std::string existingCharName = fields[1].Get<std::string>();
-            
-            LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 이미 다른 캐릭터가 접속 중이므로 캐릭터 ({})가 30초 후 강제 퇴장이 예약됩니다.", playerIp, player->GetName());
+            std::lock_guard<std::mutex> lock(ipMutex);
+            if (rateLimitedIps.count(playerIp))
+            {
+                kickPlayer = true;
+                reason = KickReason::RATE_LIMIT;
+                reasonStrForLog = "고유 계정 로그인 빈도 제한 초과";
+            }
+        }
 
-            // 30초 후 강제 퇴장 예약
+        // 2. 동시 접속 제한 확인 (고유 계정 제한에 걸리지 않은 경우에만)
+        if (!kickPlayer && sConfigMgr->GetOption<bool>("IpLimitManager.Max.Account.Enable", true))
+        {
+            uint32 maxConnections = 1;
+            {
+                std::lock_guard<std::mutex> lock(ipMutex);
+                auto it = ipMaxConnectionLimits.find(playerIp);
+                if (it != ipMaxConnectionLimits.end())
+                {
+                    maxConnections = it->second;
+                }
+                else 
+                {
+                    maxConnections = sConfigMgr->GetOption<uint32>("IpLimitManager.Max.Account", 1);
+                }
+            }
+
+            QueryResult result = CharacterDatabase.Query(
+                "SELECT COUNT(c.guid) FROM characters c "
+                "INNER JOIN acore_auth.account a ON c.account = a.id "
+                "WHERE a.last_ip = '{}' AND c.online = 1",
+                playerIp);
+
+            if (result)
+            {
+                uint32 onlineCount = result->Fetch()[0].Get<uint32>();
+                if (onlineCount > maxConnections)
+                {
+                    kickPlayer = true;
+                    reason = KickReason::CONCURRENT_LIMIT;
+                    reasonStrForLog = "동시 접속 제한 초과";
+                }
+            }
+        }
+
+        // 강제 퇴장 처리
+        if (kickPlayer)
+        {
+            LOG_INFO("module.iplimit", "IPLimit: {} ({}) 로 인해 캐릭터 ({})가 30초 후 강제 퇴장이 예약됩니다.", playerIp, reasonStrForLog, player->GetName());
+
             {
                 std::lock_guard<std::mutex> lock(kickMutex);
                 KickInfo kickInfo;
                 kickInfo.accountId = accountId;
-                kickInfo.kickTime = GameTime::GetGameTime().count() + 30; // 30초 후
+                kickInfo.kickTime = GameTime::GetGameTime().count() + 30;
                 kickInfo.messageSent = false;
+                kickInfo.reason = reason;
                 pendingKicks[player->GetGUID()] = kickInfo;
             }
 
-            // 첫 번째 경고 메시지
-            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 다른 캐릭터가 같은 IP 주소에서 이미 접속 중입니다. 30초 후 연결이 끊어집니다.");
-        }
-        else if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
-        {
-            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행되고 있습니다.");
+            std::string msg = "|cff4CFF00[IP Limit Manager]|r 경고: ";
+            if (reason == KickReason::CONCURRENT_LIMIT)
+            {
+                msg += "허용된 최대 동시 접속 수를 초과했습니다.";
+            }
+            else // KickReason::RATE_LIMIT
+            {
+                msg += "짧은 시간 내에 너무 많은 계정으로 접속했습니다.";
+            }
+            msg += " 30초 후 연결이 끊어집니다.";
+            ChatHandler(player->GetSession()).PSendSysMessage(msg);
         }
     }
 
@@ -415,20 +482,27 @@ public:
             uint32 currentTime = GameTime::GetGameTime().count();
             uint32 remainingTime = it->second.kickTime > currentTime ? it->second.kickTime - currentTime : 0;
 
-            // 10초 남았을 때 한 번만 메시지 표시
             if (remainingTime <= 10 && !it->second.messageSent)
             {
                 ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 10초 후에 연결이 끊어집니다.");
                 it->second.messageSent = true;
             }
 
-            // 시간이 다 되면 강제 퇴장
             if (remainingTime == 0)
             {
-                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r IP 제한으로 인해 연결이 끊어졌습니다.");
+                std::string msg = "|cff4CFF00[IP Limit Manager]|r ";
+                if (it->second.reason == KickReason::CONCURRENT_LIMIT)
+                {
+                    msg += "최대 동시 접속 제한으로 인해 연결이 끊어졌습니다.";
+                }
+                else // KickReason::RATE_LIMIT
+                {
+                    msg += "로그인 빈도 제한으로 인해 연결이 끊어졌습니다.";
+                }
+                ChatHandler(player->GetSession()).PSendSysMessage(msg);
+                
                 player->GetSession()->KickPlayer();
                 
-                // 데이터베이스에서 온라인 상태 해제
                 CharacterDatabase.DirectExecute("UPDATE characters SET online = 0 WHERE guid = {}", player->GetGUID().GetCounter());
                 LoginDatabase.DirectExecute("UPDATE account SET online = 0 WHERE id = {}", it->second.accountId);
                 
@@ -448,6 +522,19 @@ public:
 
         // 로그아웃 액션 기록
         LogAccountAction(accountId, playerIp, "logout");
+
+        // 메모리 정리를 위해 맵에서 IP 제거
+        {
+            std::lock_guard<std::mutex> lock(ipMutex);
+            ipMaxConnectionLimits.erase(playerIp);
+            rateLimitedIps.erase(playerIp);
+        }
+
+        // 강제 퇴장 목록에서 제거
+        {
+            std::lock_guard<std::mutex> lock(kickMutex);
+            pendingKicks.erase(player->GetGUID());
+        }
     }
 };
 
