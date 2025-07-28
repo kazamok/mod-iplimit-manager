@@ -20,7 +20,15 @@
 
 std::mutex ipMutex;
 std::unordered_map<std::string, uint32> ipConnectionCount;
-std::set<std::string> allowedIps;
+
+// IP별 제한 설정을 위한 구조체
+struct IpLimitSettings
+{
+    uint32 maxConnections;
+    uint32 maxUniqueAccounts;
+};
+std::unordered_map<std::string, IpLimitSettings> allowedIps;
+
 // IP별 고유 계정 로그인 기록을 저장하기 위한 데이터 구조
 // <IP 주소, <(계정 ID, 로그인 시간) 목록>>
 std::unordered_map<std::string, std::deque<std::pair<uint32, time_t>>> ipLoginHistory;
@@ -206,61 +214,66 @@ public:
         std::string ip;
         std::string username;
 
-        // 계정의 IP와 username 가져오기
         if (QueryResult result = LoginDatabase.Query("SELECT username, last_ip FROM account WHERE id = {}", accountId))
         {
             Field* fields = result->Fetch();
             username = fields[0].Get<std::string>();
             ip = fields[1].Get<std::string>();
-            
-            // CSV 로그 기록
             LogAccountAction(accountId, ip, "login");
         }
         else
         {
-            return; // 계정 정보를 찾을 수 없는 경우
+            return;
         }
 
         LOG_DEBUG("module.iplimit", "Checking login for account {} (ID: {}) from IP: {}", username, accountId, ip);
 
         std::lock_guard<std::mutex> lock(ipMutex);
 
-        if (allowedIps.find(ip) != allowedIps.end())
+        // IP에 적용할 제한 설정
+        uint32 maxConnections;
+        uint32 maxUniqueAccounts;
+        uint32 timeWindow = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.TimeWindowSeconds", 3600);
+
+        auto it = allowedIps.find(ip);
+        if (it != allowedIps.end())
         {
-            LOG_DEBUG("module.iplimit", "IP {} is in allowed list. Skipping restriction.", ip);
-            return;
+            // 화이트리스트에 있는 경우: DB 값 사용
+            maxConnections = it->second.maxConnections;
+            maxUniqueAccounts = it->second.maxUniqueAccounts;
+            LOG_DEBUG("module.iplimit", "IP {} is in allowed list. Limits: max_conn={}, max_unique={}", ip, maxConnections, maxUniqueAccounts);
+        }
+        else
+        {
+            // 화이트리스트에 없는 경우: 설정 파일 값 사용
+            maxConnections = sConfigMgr->GetOption<uint32>("IpLimitManager.Max.Account", 1);
+            maxUniqueAccounts = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.MaxUniqueAccounts", 1);
         }
 
-        // --- 새로운 기능: IP별 고유 계정 로그인 빈도 제한 ---
+        // --- 1. IP별 고유 계정 로그인 빈도 제한 ---
         if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
         {
             time_t now = GameTime::GetGameTime().count();
-            uint32 timeWindow = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.TimeWindowSeconds", 3600);
-            uint32 maxUniqueAccounts = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.MaxUniqueAccounts", 3);
-
-            // 1. 오래된 로그인 기록 제거
+            
             auto& history = ipLoginHistory[ip];
             history.erase(std::remove_if(history.begin(), history.end(),
                 [now, timeWindow](const auto& record) {
                     return (now - record.second) > timeWindow;
                 }), history.end());
 
-            // 2. 현재 시간창 내의 고유 계정 수 계산
             std::set<uint32> uniqueAccounts;
             for (const auto& record : history)
             {
                 uniqueAccounts.insert(record.first);
             }
 
-            // 3. 현재 로그인하는 계정이 새로운 계정인지 확인하고, 제한을 초과하는지 검사
             bool isNewAccount = uniqueAccounts.find(accountId) == uniqueAccounts.end();
             if (isNewAccount && uniqueAccounts.size() >= maxUniqueAccounts)
             {
                 LOG_INFO("module.iplimit", "IPLimit: IP {} 에서 최근 {}초 동안 허용된 고유 계정 수({})를 초과하여 계정 {} ({})의 로그인을 차단합니다.",
                     ip, timeWindow, maxUniqueAccounts, username, accountId);
                 
-                // 계정 즉시 차단 (기존 방식과 동일)
-                uint32 duration = 1; // 1초
+                uint32 duration = 1;
                 time_t banTime = GameTime::GetGameTime().count();
                 time_t unbanTime = banTime + duration;
                 LoginDatabase.DirectExecute("UPDATE account SET locked = 1, online = 0 WHERE id = {}", accountId);
@@ -268,35 +281,30 @@ public:
                 LoginDatabase.DirectExecute("INSERT INTO account_banned (id, bandate, unbandate, bannedby, banreason, active) "
                     "VALUES ({}, {}, {}, 'IP Limit Manager', 'Unique account limit exceeded', 1)",
                     accountId, banTime, unbanTime);
-                return; // 로그인 절차 중단
+                return;
             }
 
-            // 4. 유효한 로그인이면 기록에 추가
             history.push_back({accountId, now});
         }
-        // --- 새로운 기능 끝 ---
 
+        // --- 2. 동시 접속 제한 ---
         ipConnectionCount[ip]++;
         LOG_DEBUG("module.iplimit", "IP {} current connection count: {}", ip, ipConnectionCount[ip]);
 
-        // 1. 계정 로그인 시 중복 접속 차단
-        if (ipConnectionCount[ip] > 1)
+        if (ipConnectionCount[ip] > maxConnections)
         {
-            LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 이미 다른 계정이 접속 중이므로 계정 ({})이 차단됩니다.", ip, username);
+            LOG_INFO("module.iplimit", "IPLimit: 동일한 IP({})에서 허용된 최대 접속 수({})를 초과하여 계정 ({})이 차단됩니다.", ip, maxConnections, username);
             ipConnectionCount[ip]--;
 
-            // 계정 즉시 차단
-            uint32 duration = 1; // 1초
+            uint32 duration = 1;
             time_t banTime = GameTime::GetGameTime().count();
             time_t unbanTime = banTime + duration;
 
-            // 계정 잠금 및 밴 처리
             LoginDatabase.DirectExecute("UPDATE account SET locked = 1, online = 0 WHERE id = {}", accountId);
             LoginDatabase.DirectExecute("DELETE FROM account_banned WHERE id = {}", accountId);
             LoginDatabase.DirectExecute("INSERT INTO account_banned (id, bandate, unbandate, bannedby, banreason, active) "
                 "VALUES ({}, {}, {}, 'IP Limit Manager', 'Multiple connections from same IP', 1)",
                 accountId, banTime, unbanTime);
-
             return;
         }
     }
@@ -347,19 +355,20 @@ public:
         LOG_DEBUG("module.iplimit", "Player {} (Account: {}) logging in from IP: {}", 
             player->GetName(), accountId, playerIp);
 
-        // IP가 허용 목록에 있는지 확인
+        // IP가 허용 목록에 있는지 확인 (로직 수정: 모든 IP에 대해 중복 접속 확인)
         {
             std::lock_guard<std::mutex> lock(ipMutex);
-            if (allowedIps.find(playerIp) != allowedIps.end())
+            auto it = allowedIps.find(playerIp);
+            if (it != allowedIps.end())
             {
-                LOG_DEBUG("module.iplimit", "IP {} is in allowed list. Skipping restriction.", playerIp);
-                // 모듈 알림 메시지 표시
-                if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
-                {
-                    ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행 중입니다.");
-                }
-                return;
+                LOG_DEBUG("module.iplimit", "IP {} is in allowed list. Checking for duplicate connections.", playerIp);
             }
+        }
+
+        // 모듈 알림 메시지 표시
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", false))
+        {
+            ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 이 서버는 IP 제한 모듈이 실행 중입니다.");
         }
 
         // 이미 접속중인 다른 계정이 있는지 확인
@@ -471,12 +480,19 @@ public:
     {
         if (args.empty())
         {
-            handler->PSendSysMessage("사용법: .allowip append <ip>");
-            handler->PSendSysMessage("예시: .allowip append 192.168.1.1");
+            handler->PSendSysMessage("사용법: .allowip append <ip> [max_conn] [max_unique]");
+            handler->PSendSysMessage("예시: .allowip append 192.168.1.1 3 5");
             return false;
         }
 
-        std::string ip = args;
+        std::stringstream ss(args);
+        std::string ip;
+        uint32 max_connections = 2; // 기본값
+        uint32 max_unique_accounts = 1; // 기본값
+
+        ss >> ip;
+        ss >> max_connections;
+        ss >> max_unique_accounts;
         
         if (!IsValidIP(ip))
         {
@@ -492,9 +508,9 @@ public:
             return false;
         }
 
-        LoginDatabase.Execute("INSERT INTO custom_allowed_ips (ip) VALUES ('{}')", ip);
-        allowedIps.insert(ip);
-        handler->PSendSysMessage("IP {} 가 허용 목록에 추가되었습니다.", ip);
+        LoginDatabase.Execute("INSERT INTO custom_allowed_ips (ip, max_connections, max_unique_accounts) VALUES ('{}', {}, {})", ip, max_connections, max_unique_accounts);
+        allowedIps[ip] = {max_connections, max_unique_accounts};
+        handler->PSendSysMessage("IP {} 가 허용 목록에 추가되었습니다. (최대 접속: {}, 최대 고유 계정: {})", ip, max_connections, max_unique_accounts);
         return true;
     }
 
@@ -545,11 +561,10 @@ public:
 
         LOG_INFO("module.iplimit", "테이블 존재 확인됨, 데이터 조회 중...");
 
-        QueryResult result = LoginDatabase.Query("SELECT ip, description FROM custom_allowed_ips");
+        QueryResult result = LoginDatabase.Query("SELECT ip, description, max_connections, max_unique_accounts FROM custom_allowed_ips");
 
         LOG_INFO("module.iplimit", "쿼리 실행 완료, 결과 확인 중...");
 
-        // 쿼리 실패 시 처리
         if (!result)
         {
             handler->PSendSysMessage("|cFF00FFFF알림:|r 허용된 IP 목록이 비어있습니다.");
@@ -559,9 +574,9 @@ public:
 
         LOG_INFO("module.iplimit", "쿼리 결과 존재, 목록 출력 시작");
         handler->PSendSysMessage("|cFF00FF00=== 허용된 IP 목록 ===|r");
-        handler->PSendSysMessage("----------------------------------------");
-        handler->PSendSysMessage("|cFFFFFF00IP 주소           설명|r");
-        handler->PSendSysMessage("----------------------------------------");
+        handler->PSendSysMessage("-----------------------------------------------------------------");
+        handler->PSendSysMessage("|cFFFFFF00IP 주소           최대접속   최대고유계정   설명|r");
+        handler->PSendSysMessage("-----------------------------------------------------------------");
 
         uint32 count = 0;
         do
@@ -570,16 +585,18 @@ public:
 
             std::string ip = fields[0].Get<std::string>();
             std::string desc = fields[1].Get<std::string>();
+            uint32 max_connections = fields[2].Get<uint32>();
+            uint32 max_unique_accounts = fields[3].Get<uint32>();
 
             std::string paddedIp = ip;
             while (paddedIp.length() < 15)
                 paddedIp += " ";
 
-            handler->PSendSysMessage("|cFFFFFF00{}|r  {}", paddedIp, desc);
+            handler->PSendSysMessage("|cFFFFFF00{}|r  |cFFFF0000{:>2}|r         |cFF00FFFF{:>2}|r            {}", paddedIp, max_connections, max_unique_accounts, desc);
             count++;
         } while (result->NextRow());
 
-        handler->PSendSysMessage("----------------------------------------");
+        handler->PSendSysMessage("-----------------------------------------------------------------");
         handler->PSendSysMessage("총 |cFF00FF00{}|r개의 IP가 등록되어 있습니다.", count);
 
         return true;
@@ -610,21 +627,23 @@ void LoadAllowedIpsFromDB()
                 "CREATE TABLE IF NOT EXISTS `custom_allowed_ips` ("
                 "`ip` varchar(15) NOT NULL DEFAULT '127.0.0.1',"
                 "`description` varchar(255) DEFAULT NULL,"
+                "`max_connections` int unsigned NOT NULL DEFAULT 2,"
+                "`max_unique_accounts` int unsigned NOT NULL DEFAULT 1,"
                 "PRIMARY KEY (`ip`)"
                 ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
             
             // 기본 localhost IP 추가
             LoginDatabase.Execute(
-                "INSERT IGNORE INTO custom_allowed_ips (ip, description) "
-                "VALUES ('127.0.0.1', 'Default localhost')"
+                "INSERT IGNORE INTO custom_allowed_ips (ip, description, max_connections, max_unique_accounts) "
+                "VALUES ('127.0.0.1', 'Default localhost', 2, 1)"
             );
             // 5. 테이블 생성 및 기본 데이터 추가 완료
             LOG_INFO("module.iplimit", "IPLimit: 테이블 생성 및 기본 데이터 추가가 완료되었습니다.");
         }
 
         // 데이터 로드
-        QueryResult result = LoginDatabase.Query("SELECT ip FROM custom_allowed_ips");
+        QueryResult result = LoginDatabase.Query("SELECT ip, max_connections, max_unique_accounts FROM custom_allowed_ips");
         uint32 count = 0;
 
         allowedIps.clear(); // 기존 데이터 초기화
@@ -635,12 +654,14 @@ void LoadAllowedIpsFromDB()
             {
                 Field* fields = result->Fetch();
                 std::string ip = fields[0].Get<std::string>();
+                uint32 max_connections = fields[1].Get<uint32>();
+                uint32 max_unique_accounts = fields[2].Get<uint32>();
 
                 if (!ip.empty() && IsValidIP(ip))
                 {
-                    allowedIps.insert(ip);
+                    allowedIps[ip] = {max_connections, max_unique_accounts};
                     ++count;
-                    LOG_DEBUG("module.iplimit", "허용된 IP 로드: {}", ip);
+                    LOG_DEBUG("module.iplimit", "허용된 IP 로드: {} (최대 접속: {}, 최대 고유 계정: {})", ip, max_connections, max_unique_accounts);
                 }
                 else
                 {
