@@ -15,7 +15,7 @@ CREATE TABLE `custom_allowed_ips` (
 
 -- 기본 localhost IP 주소 추가
 INSERT INTO `custom_allowed_ips` (`ip`, `description`, `max_connections`, `max_unique_accounts`) 
-VALUES ('127.0.0.1', '기본 localhost IP - 시스템', 2, 1);
+VALUES ('127.0.0.1', '기본 localhost IP - 시스템', 2, 2);
 
 -- 권한 설정 (필요한 경우 사용자 이름과 호스트를 적절히 수정하세요)
 -- GRANT SELECT, INSERT, UPDATE, DELETE ON acore_auth.custom_allowed_ips TO 'acore'@'localhost';
