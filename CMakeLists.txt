@@ -22,6 +22,9 @@ cmake_minimum_required(VERSION 3.5)
 set(MODULE_NAME "mod-iplimit-manager")
 set(MODULE_PREFIX "MOD_IPLIMIT_MANAGER")
 
+# 코어 인클루드 경로 추가 (Add core include path)
+include_directories(${CMAKE_SOURCE_DIR}/src/server/game)
+
 # 데이터 디렉토리 추가 (Add data directories)
 AC_ADD_SCRIPT("${CMAKE_CURRENT_LIST_DIR}/src/mod-iplimit-manager.cpp")
 AC_ADD_SCRIPT("${CMAKE_CURRENT_LIST_DIR}/src/mod-iplimit-manager-loader.cpp")
@@ -39,4 +42,4 @@ endif()
 install(FILES ${CMAKE_CURRENT_LIST_DIR}/conf/mod-iplimit-manager.conf.dist DESTINATION ${CONF_DIR})
 
 # SQL 스크립트 설치 (Install SQL script)
-install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/data/sql/ DESTINATION ${CMAKE_INSTALL_PREFIX}/data/sql/)
+install(FILES ${CMAKE_CURRENT_LIST_DIR}/data/sql/db-auth/mod-iplimit-manager-integrated.sql DESTINATION ${CMAKE_INSTALL_PREFIX}/data/sql/db-auth)

@@ -339,7 +339,11 @@ public:
 class IpLimitManager_PlayerScript : public PlayerScript
 {
 public:
-    IpLimitManager_PlayerScript() : PlayerScript("IpLimitManager_PlayerScript") {}
+    IpLimitManager_PlayerScript() : PlayerScript("IpLimitManager_PlayerScript", { 
+        PLAYERHOOK_ON_LOGIN,
+        PLAYERHOOK_ON_UPDATE,
+        PLAYERHOOK_ON_LOGOUT
+    }) {}
 
     void OnPlayerLogin(Player* player)
     {
@@ -471,6 +475,21 @@ public:
             msg += " 30초 후 연결이 끊어집니다.";
             ChatHandler(player->GetSession()).PSendSysMessage(msg);
         }
+        else 
+        {
+            // 모든 제한을 통과한 경우에만 account_formation에 기록
+            if (sConfigMgr->GetOption<bool>("AccountIpLogger.Enable", true))
+            {
+                if (!player->GetSession()->IsGMAccount() || sConfigMgr->GetOption<bool>("AccountIpLogger.Log.GM.Enable", false))
+                {
+                    LoginDatabase.Execute(
+                        "INSERT INTO account_formation (accountId, ipAddress) VALUES ({}, '{}') "
+                        "ON DUPLICATE KEY UPDATE lastSeen = NOW(), loginCount = loginCount + 1",
+                        accountId, playerIp
+                    );
+                }
+            }
+        }
     }
 
     void OnPlayerUpdate(Player* player, uint32 diff)
@@ -555,12 +574,131 @@ public:
             { "show",   HandleShowIpCommand, SEC_ADMINISTRATOR, Console::Yes }
         };
 
+        static ChatCommandTable accountIpCommandTable =
+        {
+            { "ip", HandleAccountIpCommand, SEC_GAMEMASTER, Console::No }
+        };
+
+        static ChatCommandTable ipAccountsCommandTable =
+        {
+            { "accounts", HandleIpAccountsCommand, SEC_GAMEMASTER, Console::No }
+        };
+
         static ChatCommandTable commandTable =
         {
-            { "allowip", allowIpCommandTable }
+            { "allowip", allowIpCommandTable },
+            { "account", accountIpCommandTable },
+            { "ip", ipAccountsCommandTable }
         };
  
         return commandTable;
+    }
+
+    static bool HandleAccountIpCommand(ChatHandler* handler, const std::string& args)
+    {
+        if (args.empty())
+        {
+            handler->SendSysMessage("Usage: .account ip <CharacterName>");
+            return false;
+        }
+
+        std::string characterName = args;
+        uint32 accountId = 0;
+        ObjectGuid playerGuid;
+
+        // Find account and guid from character name
+        QueryResult charResult = CharacterDatabase.Query("SELECT guid, account FROM characters WHERE name = '{}'", characterName);
+        if (charResult)
+        {
+            Field* fields = charResult->Fetch();
+            playerGuid = ObjectGuid::Create<HighGuid::Player>(fields[0].Get<uint32>());
+            accountId = fields[1].Get<uint32>();
+        }
+        else
+        {
+            handler->PSendSysMessage("Player '%s' not found.", characterName.c_str());
+            return false;
+        }
+
+        if (!accountId)
+        {
+            handler->PSendSysMessage("Could not find account for player '%s'.", characterName.c_str());
+            return false;
+        }
+
+        QueryResult result = LoginDatabase.Query("SELECT ipAddress, firstSeen, lastSeen, loginCount FROM account_formation WHERE accountId = {} ORDER BY lastSeen DESC", accountId);
+
+        if (!result)
+        {
+            handler->PSendSysMessage("No IP information found for account of player '%s'.", characterName.c_str());
+            return true;
+        }
+
+        handler->PSendSysMessage("IP History for account of %s (ID: %u):", characterName.c_str(), accountId);
+        handler->SendSysMessage("-------------------------------------------------");
+
+        do
+        {
+            Field* fields = result->Fetch();
+            std::string ip = fields[0].Get<std::string>();
+            std::string firstSeen = fields[1].Get<std::string>();
+            std::string lastSeen = fields[2].Get<std::string>();
+            uint32 count = fields[3].Get<uint32>();
+
+            handler->PSendSysMessage("IP: %s", ip.c_str());
+            handler->PSendSysMessage("  First Seen: %s", firstSeen.c_str());
+            handler->PSendSysMessage("  Last Seen:  %s", lastSeen.c_str());
+            handler->PSendSysMessage("  Login Count: %u", count);
+
+        } while (result->NextRow());
+        
+        handler->SendSysMessage("-------------------------------------------------");
+
+        return true;
+    }
+
+    static bool HandleIpAccountsCommand(ChatHandler* handler, const std::string& args)
+    {
+        if (args.empty())
+        {
+            handler->SendSysMessage("Usage: .ip accounts <IPAddress>");
+            return false;
+        }
+
+        std::string ipAddress = args;
+        QueryResult result = LoginDatabase.Query("SELECT accountId, lastSeen, loginCount FROM account_formation WHERE ipAddress = '{}' ORDER BY lastSeen DESC", ipAddress);
+
+        if (!result)
+        {
+            handler->PSendSysMessage("No accounts found for IP address '%s'.", ipAddress.c_str());
+            return true;
+        }
+
+        handler->PSendSysMessage("Account History for IP: %s", ipAddress.c_str());
+        handler->SendSysMessage("-------------------------------------------------");
+
+        do
+        {
+            Field* fields = result->Fetch();
+            uint32 accountId = fields[0].Get<uint32>();
+            std::string lastSeen = fields[1].Get<std::string>();
+            uint32 count = fields[2].Get<uint32>();
+
+            std::string accountName;
+            if (!AccountMgr::GetName(accountId, accountName))
+            {
+                accountName = "Unknown";
+            }
+
+            handler->PSendSysMessage("Account: %s (ID: %u)", accountName.c_str(), accountId);
+            handler->PSendSysMessage("  Last Seen: %s", lastSeen.c_str());
+            handler->PSendSysMessage("  Login Count: %u", count);
+
+        } while (result->NextRow());
+
+        handler->SendSysMessage("-------------------------------------------------");
+
+        return true;
     }
 
     static bool HandleAddIpCommand(ChatHandler* handler, std::string const& args)
