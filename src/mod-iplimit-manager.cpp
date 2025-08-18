@@ -376,17 +376,17 @@ public:
 
             if (maxConnEnabled && rateLimitEnabled)
             {
-                msg += "이 서버는 동시 접속 및 로그인 빈도 제한이 활성화되어 있습니다.";
+                msg += "동시 접속 및 로그인 빈도 제한이 활성화되어 있습니다.";
                 active = true;
             }
             else if (maxConnEnabled)
             {
-                msg += "이 서버는 동시 접속 제한이 활성화되어 있습니다.";
+                msg += "동시 접속 제한이 활성화되어 있습니다.";
                 active = true;
             }
             else if (rateLimitEnabled)
             {
-                msg += "이 서버는 로그인 빈도 제한이 활성화되어 있습니다.";
+                msg += "로그인 빈도 제한이 활성화되어 있습니다.";
                 active = true;
             }
 
