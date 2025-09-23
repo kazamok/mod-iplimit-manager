@@ -501,9 +501,9 @@ public:
             uint32 currentTime = GameTime::GetGameTime().count();
             uint32 remainingTime = it->second.kickTime > currentTime ? it->second.kickTime - currentTime : 0;
 
-            if (remainingTime <= 10 && !it->second.messageSent)
+            if (remainingTime <= 5 && !it->second.messageSent)
             {
-                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 10초 후에 연결이 끊어집니다.");
+                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 5초 후에 연결이 끊어집니다.");
                 it->second.messageSent = true;
             }
 
@@ -519,11 +519,11 @@ public:
                     msg += "로그인 빈도 제한으로 인해 연결이 끊어졌습니다.";
                 }
                 ChatHandler(player->GetSession()).PSendSysMessage(msg);
-                
-                player->GetSession()->KickPlayer();
-                
+
                 CharacterDatabase.DirectExecute("UPDATE characters SET online = 0 WHERE guid = {}", player->GetGUID().GetCounter());
                 LoginDatabase.DirectExecute("UPDATE account SET online = 0 WHERE id = {}", it->second.accountId);
+
+                player->GetSession()->KickPlayer();
                 
                 pendingKicks.erase(it);
             }
@@ -935,4 +935,5 @@ void Addmod_iplimit_managerScripts()
     new IpLimitManager_CommandScript();
     new IpLimitManagerWorldScript();
 }
+
 
