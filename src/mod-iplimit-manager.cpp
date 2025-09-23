@@ -409,7 +409,7 @@ public:
             {
                 kickPlayer = true;
                 reason = KickReason::RATE_LIMIT;
-                reasonStrForLog = "고유 계정 로그인 빈도 제한 초과";
+                reasonStrForLog = "로그인 빈도 제한 초과";
             }
         }
 
@@ -451,13 +451,13 @@ public:
         // 강제 퇴장 처리
         if (kickPlayer)
         {
-            LOG_INFO("module.iplimit", "IPLimit: {} ({}) 로 인해 캐릭터 ({})가 30초 후 강제 퇴장이 예약됩니다.", playerIp, reasonStrForLog, player->GetName());
+            LOG_INFO("module.iplimit", "IPLimit: {} ({}) 로 인해 캐릭터 ({})가 10초 후 강제 퇴장이 예약됩니다.", playerIp, reasonStrForLog, player->GetName());
 
             {
                 std::lock_guard<std::mutex> lock(kickMutex);
                 KickInfo kickInfo;
                 kickInfo.accountId = accountId;
-                kickInfo.kickTime = GameTime::GetGameTime().count() + 30;
+                kickInfo.kickTime = GameTime::GetGameTime().count() + 10;
                 kickInfo.messageSent = false;
                 kickInfo.reason = reason;
                 pendingKicks[player->GetGUID()] = kickInfo;
@@ -472,7 +472,7 @@ public:
             {
                 msg += "짧은 시간 내에 너무 많은 계정으로 접속했습니다.";
             }
-            msg += " 30초 후 연결이 끊어집니다.";
+            msg += " 10초 후 연결이 끊어집니다.";
             ChatHandler(player->GetSession()).PSendSysMessage(msg);
         }
         else 
@@ -507,7 +507,7 @@ public:
                 it->second.messageSent = true;
             }
 
-            if (remainingTime == 0)
+            if (remainingTime == 2) // 2초 남기고 메세지
             {
                 std::string msg = "|cff4CFF00[IP Limit Manager]|r ";
                 if (it->second.reason == KickReason::CONCURRENT_LIMIT)
