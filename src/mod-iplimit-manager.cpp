@@ -222,17 +222,32 @@ public:
 
         std::string ip;
         std::string username;
+        uint32 gmlevel = 0;
 
-        if (QueryResult result = LoginDatabase.Query("SELECT username, last_ip FROM account WHERE id = {}", accountId))
+        if (QueryResult result = LoginDatabase.Query("SELECT a.username, a.last_ip, aa.gmlevel FROM account a LEFT JOIN account_access aa ON a.id = aa.id WHERE a.id = {}", accountId))
         {
             Field* fields = result->Fetch();
             username = fields[0].Get<std::string>();
             ip = fields[1].Get<std::string>();
+            if (!fields[2].IsNull())
+            {
+                gmlevel = fields[2].Get<uint32>();
+            }
             LogAccountAction(accountId, ip, "login");
         }
         else
         {
             return;
+        }
+
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.Bypass.GM.Enable", true))
+        {
+            uint32 minGmLevel = sConfigMgr->GetOption<uint32>("IpLimitManager.Bypass.GM.Level", 3);
+            if (gmlevel >= minGmLevel)
+            {
+                LOG_DEBUG("module.iplimit", "Account {} ({}) is a GM (level {}), bypassing IP limit checks in AccountScript.", accountId, username, gmlevel);
+                return;
+            }
         }
 
         LOG_DEBUG("module.iplimit", "Checking login for account {} (ID: {}) from IP: {}", username, accountId, ip);
@@ -347,6 +362,19 @@ public:
 
     void OnPlayerLogin(Player* player)
     {
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.Bypass.GM.Enable", true))
+        {
+            uint32 minGmLevel = sConfigMgr->GetOption<uint32>("IpLimitManager.Bypass.GM.Level", 3);
+            if (player->GetSession()->GetSecurity() >= minGmLevel)
+            {
+                if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", true))
+                {
+                    ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r GM 계정(레벨 %u+)은 IP 제한 검사를 우회합니다.", minGmLevel);
+                }
+                return;
+            }
+        }
+
         if (!sConfigMgr->GetOption<bool>("EnableIpLimitManager", true))
             return;
 
