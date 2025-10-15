@@ -369,7 +369,7 @@ public:
             {
                 if (sConfigMgr->GetOption<bool>("IpLimitManager.Announce.Enable", true))
                 {
-                    ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r GM 계정(레벨 %u+)은 IP 제한 검사를 우회합니다.", minGmLevel);
+                    ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r GM 계정(레벨 {})은 IP 제한 검사를 우회합니다.", minGmLevel);
                 }
                 return;
             }
@@ -963,5 +963,6 @@ void Addmod_iplimit_managerScripts()
     new IpLimitManager_CommandScript();
     new IpLimitManagerWorldScript();
 }
+
 
 
