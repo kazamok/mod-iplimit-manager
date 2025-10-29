@@ -21,7 +21,7 @@
 std::mutex ipMutex;
 std::unordered_map<std::string, uint32> ipConnectionCount;
 std::unordered_map<std::string, uint32> ipMaxConnectionLimits;
-std::unordered_set<std::string> rateLimitedIps;
+
 
 // IP별 제한 설정을 위한 구조체
 struct IpLimitSettings
@@ -277,33 +277,7 @@ public:
         // PlayerScript에서 사용할 수 있도록 최대 연결 수를 저장
         ipMaxConnectionLimits[ip] = maxConnections;
 
-        // --- 1. IP별 고유 계정 로그인 빈도 제한 ---
-        if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
-        {
-            time_t now = GameTime::GetGameTime().count();
-            
-            auto& history = ipLoginHistory[ip];
-            history.erase(std::remove_if(history.begin(), history.end(),
-                [now, timeWindow](const auto& record) {
-                    return (now - record.second) > timeWindow;
-                }), history.end());
 
-            std::set<uint32> uniqueAccounts;
-            for (const auto& record : history)
-            {
-                uniqueAccounts.insert(record.first);
-            }
-
-            bool isNewAccount = uniqueAccounts.find(accountId) == uniqueAccounts.end();
-            if (isNewAccount && uniqueAccounts.size() >= maxUniqueAccounts)
-            {
-                LOG_INFO("module.iplimit", "IPLimit: IP {} 에서 최근 {}초 동안 허용된 고유 계정 수({})를 초과했습니다. PlayerScript에서 처리하도록 플래그를 설정합니다.",
-                    ip, timeWindow, maxUniqueAccounts);
-                rateLimitedIps.insert(ip);
-            }
-
-            history.push_back({accountId, now});
-        }
 
         // --- 2. 동시 접속 제한 ---
         if (sConfigMgr->GetOption<bool>("IpLimitManager.Max.Account.Enable", true))
@@ -433,11 +407,39 @@ public:
         if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
         {
             std::lock_guard<std::mutex> lock(ipMutex);
-            if (rateLimitedIps.count(playerIp))
+            time_t now = GameTime::GetGameTime().count();
+            uint32 timeWindow = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.TimeWindowSeconds", 3600);
+
+            auto& history = ipLoginHistory[playerIp];
+            history.erase(std::remove_if(history.begin(), history.end(),
+                [now, timeWindow](const auto& record) {
+                    return (now - record.second) > timeWindow;
+                }), history.end());
+
+            std::set<uint32> uniqueAccounts;
+            for (const auto& record : history)
+            {
+                uniqueAccounts.insert(record.first);
+            }
+
+            bool isNewAccount = uniqueAccounts.find(accountId) == uniqueAccounts.end();
+            uint32 maxUniqueAccounts = 1;
+            auto it = allowedIps.find(playerIp);
+            if (it != allowedIps.end())
+            {
+                maxUniqueAccounts = it->second.maxUniqueAccounts;
+            }
+            else
+            {
+                maxUniqueAccounts = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.MaxUniqueAccounts", 1);
+            }
+
+            if (isNewAccount && uniqueAccounts.size() >= maxUniqueAccounts)
             {
                 kickPlayer = true;
                 reason = KickReason::RATE_LIMIT;
                 reasonStrForLog = "로그인 빈도 제한 초과";
+                LOG_INFO("module.iplimit", "IPLimit: IP {} 에서 최근 {}초 동안 허용된 고유 계정 수({})를 초과했습니다.", playerIp, timeWindow, maxUniqueAccounts);
             }
         }
 
@@ -467,7 +469,7 @@ public:
             if (result)
             {
                 uint32 onlineCount = result->Fetch()[0].Get<uint32>();
-                if (onlineCount > maxConnections)
+                if (onlineCount >= maxConnections)
                 {
                     kickPlayer = true;
                     reason = KickReason::CONCURRENT_LIMIT;
@@ -505,7 +507,14 @@ public:
         }
         else 
         {
-            // 모든 제한을 통과한 경우에만 account_formation에 기록
+            // 모든 제한을 통과한 경우에만 로그인 기록 추가
+            if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
+            {
+                std::lock_guard<std::mutex> lock(ipMutex);
+                ipLoginHistory[playerIp].push_back({accountId, GameTime::GetGameTime().count()});
+            }
+
+            // account_formation에 기록
             if (sConfigMgr->GetOption<bool>("AccountIpLogger.Enable", true))
             {
                 if (!player->GetSession()->IsGMAccount() || sConfigMgr->GetOption<bool>("AccountIpLogger.Log.GM.Enable", false))
@@ -574,7 +583,6 @@ public:
         {
             std::lock_guard<std::mutex> lock(ipMutex);
             ipMaxConnectionLimits.erase(playerIp);
-            rateLimitedIps.erase(playerIp);
         }
 
         // 강제 퇴장 목록에서 제거
@@ -874,25 +882,8 @@ void LoadAllowedIpsFromDB()
         QueryResult checkTable = LoginDatabase.Query("SHOW TABLES LIKE 'custom_allowed_ips'");
         if (!checkTable)
         {
-            // 4. 테이블 생성 안내
-            LOG_INFO("module.iplimit", "IPLimit: custom_allowed_ips 테이블을 생성합니다...");
-            LoginDatabase.Execute(
-                "CREATE TABLE IF NOT EXISTS `custom_allowed_ips` ("
-                "`ip` varchar(15) NOT NULL DEFAULT '127.0.0.1',"
-                "`description` varchar(255) DEFAULT NULL,"
-                "`max_connections` int unsigned NOT NULL DEFAULT 2,"
-                "`max_unique_accounts` int unsigned NOT NULL DEFAULT 1,"
-                "PRIMARY KEY (`ip`)"
-                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            );
-            
-            // 기본 localhost IP 추가
-            LoginDatabase.Execute(
-                "INSERT IGNORE INTO custom_allowed_ips (ip, description, max_connections, max_unique_accounts) "
-                "VALUES ('127.0.0.1', 'Default localhost', 2, 1)"
-            );
-            // 5. 테이블 생성 및 기본 데이터 추가 완료
-            LOG_INFO("module.iplimit", "IPLimit: 테이블 생성 및 기본 데이터 추가가 완료되었습니다.");
+            LOG_ERROR("module.iplimit", "IPLimit: `custom_allowed_ips` 테이블이 존재하지 않습니다. SQL 파일을 DB에 임포트해주세요.");
+            return;
         }
 
         // 데이터 로드
@@ -932,16 +923,99 @@ void LoadAllowedIpsFromDB()
     }
 }
 
+void LoadLoginHistoryFromDB()
+{
+    try
+    {
+        LOG_INFO("module.iplimit", "IPLimit: 데이터베이스에서 IP 로그인 기록을 로드합니다...");
+
+        // 1. 테이블 존재 여부 확인 및 생성
+        QueryResult checkTable = LoginDatabase.Query("SHOW TABLES LIKE 'ip_login_history'");
+        if (!checkTable)
+        {
+            LOG_ERROR("module.iplimit", "IPLimit: `ip_login_history` 테이블이 존재하지 않습니다. SQL 파일을 DB에 임포트해주세요.");
+            return;
+        }
+
+        // 2. 데이터 로드
+        uint32 timeWindow = sConfigMgr->GetOption<uint32>("IpLimitManager.RateLimit.TimeWindowSeconds", 3600);
+        time_t minTime = GameTime::GetGameTime().count() - timeWindow;
+
+        QueryResult result = LoginDatabase.Query("SELECT ip, account_id, login_time FROM ip_login_history WHERE login_time >= {}", (uint32)minTime);
+
+        if (!result)
+        {
+            LOG_INFO("module.iplimit", "IPLimit: 로드할 IP 로그인 기록이 없습니다.");
+            return;
+        }
+
+        uint32 count = 0;
+        {
+            std::lock_guard<std::mutex> lock(ipMutex);
+            do
+            {
+                Field* fields = result->Fetch();
+                std::string ip = fields[0].Get<std::string>();
+                uint32 accountId = fields[1].Get<uint32>();
+                time_t loginTime = fields[2].Get<uint32>();
+
+                ipLoginHistory[ip].push_back({accountId, loginTime});
+                count++;
+
+            } while (result->NextRow());
+        }
+
+        LOG_INFO("module.iplimit", "IPLimit: {}개의 IP 로그인 기록을 로드했습니다.", count);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("module.iplimit", "IP 로그인 기록 로드 중 오류 발생: {}", e.what());
+    }
+}
+
+void LoadAllowedIpsFromDB();
+void LoadLoginHistoryFromDB();
+void BackupLoginHistoryToDB();
+
 // Load IP list only after full DB initialization
 class IpLimitManagerWorldScript : public WorldScript
 {
+private:
+    uint32 m_updateTimer;
+    uint32 m_backupInterval;
+
 public:
-    IpLimitManagerWorldScript() : WorldScript("IpLimitManagerWorldScript") {}
+    IpLimitManagerWorldScript() : WorldScript("IpLimitManagerWorldScript") 
+    {
+        m_updateTimer = 0;
+    }
 
     void OnStartup() override
     {
         InitializeServerStartTime();
         LoadAllowedIpsFromDB();
+
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.Backup.Enable", true))
+        {
+            LoadLoginHistoryFromDB();
+            m_backupInterval = sConfigMgr->GetOption<uint32>("IpLimitManager.Backup.Interval", 300);
+        }
+    }
+
+    void OnUpdate(uint32 diff) override
+    {
+        if (!sConfigMgr->GetOption<bool>("IpLimitManager.Backup.Enable", true))
+        {
+            return;
+        }
+
+        m_updateTimer += diff;
+
+        if (m_updateTimer >= m_backupInterval * 1000)
+        {
+            m_updateTimer = 0;
+            BackupLoginHistoryToDB();
+        }
     }
 
     void OnShutdown() override
@@ -953,8 +1027,54 @@ public:
             csvFile.flush();
             csvFile.close();
         }
+
+        if (sConfigMgr->GetOption<bool>("IpLimitManager.Backup.Enable", true))
+        {
+            BackupLoginHistoryToDB();
+        }
     }
 };
+
+void BackupLoginHistoryToDB()
+{
+    if (ipLoginHistory.empty())
+    {
+        return;
+    }
+
+    try
+    {
+        LOG_INFO("module.iplimit", "IPLimit: IP 로그인 기록을 데이터베이스에 백업합니다...");
+
+        LoginDatabase.Execute("TRUNCATE TABLE `ip_login_history`");
+
+        SQLTransaction trans = LoginDatabase.BeginTransaction();
+        uint32 count = 0;
+
+        {
+            std::lock_guard<std::mutex> lock(ipMutex);
+            for (auto const& [ip, history] : ipLoginHistory)
+            {
+                for (auto const& record : history)
+                {
+                    trans->Append("INSERT INTO ip_login_history (ip, account_id, login_time) VALUES ('{}', {}, {})", ip, record.first, (uint32)record.second);
+                    count++;
+                }
+            }
+        }
+
+        if (count > 0)
+        {
+            LoginDatabase.CommitTransaction(trans);
+        }
+
+        LOG_INFO("module.iplimit", "IPLimit: {}개의 IP 로그인 기록을 백업했습니다.", count);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("module.iplimit", "IP 로그인 기록 백업 중 오류 발생: {}", e.what());
+    }
+}
 
 void Addmod_iplimit_managerScripts()
 {

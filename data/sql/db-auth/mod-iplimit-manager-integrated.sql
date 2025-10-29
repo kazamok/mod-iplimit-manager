@@ -42,3 +42,13 @@ CREATE TABLE `account_formation` (
   KEY `idx_ipAddress` (`ipAddress`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='IP Limit Manager - Logger, 계정 및 IP 관계를 추적합니다.';
 
+--
+-- Table structure for table `ip_login_history`
+-- 설명: 주기적으로 저장하기위한 테이블
+--
+CREATE TABLE IF NOT EXISTS `ip_login_history` (
+  `ip` varchar(15) NOT NULL COMMENT '접속한 계정의 Ip',
+  `account_id` int unsigned NOT NULL COMMENT '계정 ID (from acore_auth.account.id)',
+  `login_time` int unsigned NOT NULL COMMENT '로그인 시간',
+  PRIMARY KEY (`ip`, `account_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='IP Limit Manager - 계정 및 IP 를 주기적으로 저장합니다.';

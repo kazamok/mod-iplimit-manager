@@ -136,3 +136,22 @@ IpLimitManager.Bypass.GM.Enable = 1
 #        Default:     3
 #
 IpLimitManager.Bypass.GM.Level = 3
+
+#==================================================================================================
+# 6. 백업 설정
+#==================================================================================================
+
+#
+#    IpLimitManager.Backup.Enable
+#        Description: 시간(300초:5분) 간격으로 백업을 합니다.
+#        Default:     1 - (활성화)
+#                     0 - (비활성화)
+#
+IpLimitManager.Backup.Enable = 1
+
+#
+#    IpLimitManager.Backup.Interval
+#        Description: 저장 간격(초)
+#                     (300: 5분)
+#
+IpLimitManager.Backup.Interval = 300
