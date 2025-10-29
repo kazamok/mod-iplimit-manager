@@ -373,7 +373,7 @@ public:
         {
             bool maxConnEnabled = sConfigMgr->GetOption<bool>("IpLimitManager.Max.Account.Enable", true);
             bool rateLimitEnabled = sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true);
-            std::string msg = "|cff4CFF00[IP Limit Manager]|r ";
+            std::string msg = "|cff4CFF00[시스템]|r ";
             bool active = false;
 
             if (maxConnEnabled && rateLimitEnabled)
@@ -493,7 +493,7 @@ public:
                 pendingKicks[player->GetGUID()] = kickInfo;
             }
 
-            std::string msg = "|cff4CFF00[IP Limit Manager]|r 경고: ";
+            std::string msg = "|cff4CFF00[시스템]|r 경고: ";
             if (reason == KickReason::CONCURRENT_LIMIT)
             {
                 msg += "허용된 최대 동시 접속 수를 초과했습니다.";
@@ -540,13 +540,13 @@ public:
 
             if (remainingTime <= 5 && !it->second.messageSent)
             {
-                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[IP Limit Manager]|r 경고: 5초 후에 연결이 끊어집니다.");
+                ChatHandler(player->GetSession()).PSendSysMessage("|cff4CFF00[시스템]|r 경고: 5초 후에 연결이 끊어집니다.");
                 it->second.messageSent = true;
             }
 
             if (remainingTime == 2) // 2초 남기고 메세지
             {
-                std::string msg = "|cff4CFF00[IP Limit Manager]|r ";
+                std::string msg = "|cff4CFF00[시스템]|r ";
                 if (it->second.reason == KickReason::CONCURRENT_LIMIT)
                 {
                     msg += "최대 동시 접속 제한으로 인해 연결이 끊어졌습니다.";
@@ -1083,6 +1083,7 @@ void Addmod_iplimit_managerScripts()
     new IpLimitManager_CommandScript();
     new IpLimitManagerWorldScript();
 }
+
 
 
 
