@@ -511,7 +511,16 @@ public:
             if (sConfigMgr->GetOption<bool>("IpLimitManager.RateLimit.Enable", true))
             {
                 std::lock_guard<std::mutex> lock(ipMutex);
-                ipLoginHistory[playerIp].push_back({accountId, GameTime::GetGameTime().count()});
+                auto& history = ipLoginHistory[playerIp];
+                
+                // 기존에 있던 동일 계정 기록을 삭제
+                history.erase(std::remove_if(history.begin(), history.end(),
+                    [accountId](const auto& record) {
+                        return record.first == accountId;
+                    }), history.end());
+
+                // 새로운 기록 추가
+                history.push_back({accountId, GameTime::GetGameTime().count()});
             }
 
             // account_formation에 기록
