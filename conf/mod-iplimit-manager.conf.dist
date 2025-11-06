@@ -154,5 +154,6 @@ IpLimitManager.Backup.Enable = 1
 #        Description: 저장 간격(초)
 #                     (300: 5분)
 #
-IpLimitManager.Backup.Interval = 600
+IpLimitManager.Backup.Interval = 3600
+
 
